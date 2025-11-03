@@ -13,10 +13,7 @@ import './mobile.css'  // 移动端样式
 // markdown-it 和 DOMPurify 改为按需动态 import，类型仅在编译期引用
 import type MarkdownIt from 'markdown-it'
 // WYSIWYG: 锚点插件与锚点同步（用于替换纯比例同步）
-import anchorsPlugin from './wysiwyg/render/anchorsPlugin'
-import { buildAnchors, syncByAnchor, type Anchor } from './wysiwyg/sync/anchors'
-import { createWysiwygWheelHandler } from './wysiwyg/sync/scroll'
-import { enableWysiwygV2, disableWysiwygV2, isWysiwygV2Enabled } from './wysiwyg/v2/index'
+import { enableWysiwygV2, disableWysiwygV2 } from './wysiwyg/v2/index'
 
 // Tauri 插件（v2）
 // Tauri 对话框：使用 ask 提供原生确认，避免浏览器 confirm 在关闭事件中失效
@@ -57,7 +54,7 @@ let mermaidReady = false
 const mermaidSvgCache = new Map<string, { svg: string; renderId: string }>()
 let mermaidSvgCacheVersion = 0
 // 所见模式：用于滚动同步的“源位锚点”表
-let _wysiwygAnchors: Anchor[] = []
+// 旧所见模式已移除：不再维护锚点表
 
 function hashMermaidCode(code: string): string {
   try {
@@ -535,51 +532,12 @@ const filenameLabel = document.getElementById('filename') as HTMLDivElement
 const status = document.getElementById('status') as HTMLDivElement
 
 // 所见模式：输入即渲染 + 覆盖式同窗显示
-function syncScrollEditorToPreview() {
-  try {
-    if (!wysiwyg) return
-    if (wysiwygV2Active) return
-    const er = editor.scrollHeight - editor.clientHeight
-    const pr = preview.scrollHeight - preview.clientHeight
-    // 优先使用“锚点法”：用光标位置（selectionStart）映射到预览 top
-    let dest = 0
-    if (_wysiwygAnchors && _wysiwygAnchors.length > 0) {
-      const pos = editor.selectionStart >>> 0
-      dest = syncByAnchor(pos, _wysiwygAnchors, Math.max(0, pr))
-    } else {
-      const ratio = er > 0 ? (editor.scrollTop / er) : 0
-      dest = Math.max(0, Math.round(ratio * Math.max(0, pr)))
-    }
-    if (!Number.isNaN(dest)) preview.scrollTop = dest
-    updateWysiwygLineHighlight()
-  } catch {}
-}
+function syncScrollEditorToPreview() { /* overlay removed */ }
 
 function scheduleWysiwygRender() {
   try {
-    if (!wysiwyg) return
-    if (wysiwygV2Active) return
-    if (shouldDeferWysiwygRender()) { updateWysiwygLineHighlight(); return }
-    if (_wysiwygRaf) cancelAnimationFrame(_wysiwygRaf)
-    _wysiwygRaf = requestAnimationFrame(async () => {
-      // 先进行“轻渲染”：快速输出安全 HTML，避免整屏重排与闪烁
-      try { await renderPreviewLight() } catch {}
-      try { updateWysiwygVirtualPadding() } catch {}
-      syncScrollEditorToPreview()
-      try { ensureWysiwygCaretDotInView() } catch {}
-      updateWysiwygCaretDot()
-      // 再在空闲时机进行“重渲染”：Mermaid/代码高亮等重块
-      try {
-        const idle = (window as any).requestIdleCallback || ((cb: any) => setTimeout(cb, 120))
-        idle(async () => {
-          try { await renderPreview() } catch {}
-          try { updateWysiwygVirtualPadding() } catch {}
-          syncScrollEditorToPreview()
-          try { ensureWysiwygCaretDotInView() } catch {}
-          updateWysiwygCaretDot()
-        })
-      } catch {}
-    })
+    // 旧所见模式已移除：不再进行 overlay 渲染调度
+    return
   } catch {}
 }
 
@@ -684,7 +642,7 @@ async function renderPreviewLight() {
   })
   try { preview.innerHTML = `<div class="preview-body">${safe}</div>` } catch {}
   // 轻渲染后也生成锚点，提升滚动同步体验
-  try { if (wysiwyg) { _wysiwygAnchors = buildAnchors(preview) } } catch {}
+  // 旧所见模式移除：不再重建锚点表
 }
 
 async function setWysiwygEnabled(enable: boolean) {
@@ -708,8 +666,10 @@ async function setWysiwygEnabled(enable: boolean) {
           try { editor.value = mdNext; dirty = true; refreshTitle(); refreshStatus() } catch {}
         })
         wysiwygV2Active = true
-        if (container) { container.classList.add('wysiwyg-v2'); container.classList.remove('wysiwyg') }
+        if (container) { container.classList.add('wysiwyg-v2'); }
         try { preview.classList.add('hidden') } catch {}
+        // 移除旧滚轮处理器
+        try { if (_wheelHandlerRef) { container?.removeEventListener('wheel', _wheelHandlerRef as any); _wheelHandlerRef = null } } catch {}
         return
       } catch (e) {
         console.error('启用所见V2失败，将回退到旧模式', e)
@@ -1145,22 +1105,11 @@ const aboutBtn = document.createElement('div')
       } catch {}
 }
 const containerEl = document.querySelector('.container') as HTMLDivElement
+let _wheelHandlerRef: ((e: WheelEvent)=>void) | null = null
   if (containerEl) {
   // 修复在所见模式中滚轮无法滚动编辑区的问题：
   // 在容器层捕获 wheel 事件，直接驱动 textarea 的滚动并同步预览
-  try {
-    const wheelHandler = createWysiwygWheelHandler(editor as any, preview as any, {
-      isWysiwyg: () => wysiwyg,
-      moveCaretByLines: (d, col) => moveWysiwygCaretByLines(d, col),
-      applyCaretMoved: (delta) => { try { _wysiwygCaretLineIndex += delta } catch {} },
-      getCaretVisualColumn: () => _wysiwygCaretVisualColumn,
-      updateLineHighlight: () => updateWysiwygLineHighlight(),
-      updateCaretDot: () => { updateWysiwygCaretDot(); startDotBlink() },
-      ensureCaretDotInView: () => ensureWysiwygCaretDotInView(),
-      scheduleRenderIfNeeded: () => { if (!wysiwygEnterToRenderOnly) scheduleWysiwygRender() },
-    })
-    containerEl.addEventListener('wheel', wheelHandler, { passive: false } as any)
-  } catch {}
+  // 旧所见模式移除：不再绑定容器层滚轮处理器
   // 所见模式：当前行高亮覆盖层
   try {
     wysiwygLineEl = document.createElement('div') as HTMLDivElement
@@ -1171,12 +1120,7 @@ const containerEl = document.querySelector('.container') as HTMLDivElement
     wysiwygCaretEl.id = 'wysiwyg-caret'
     wysiwygCaretEl.className = 'wysiwyg-caret'
     containerEl.appendChild(wysiwygCaretEl)
-    // 所见模式状态条
-    wysiwygStatusEl = document.createElement('div') as HTMLDivElement
-    wysiwygStatusEl.id = 'wysiwyg-status'
-    wysiwygStatusEl.className = 'wysiwyg-status'
-    wysiwygStatusEl.textContent = '所见模式 · 按 Ctrl+Shift+E 退出'
-    containerEl.appendChild(wysiwygStatusEl)
+    // 旧所见模式移除：不再创建覆盖部件
   } catch {}
   const panel = document.createElement('div')
   panel.id = 'recent-panel'
@@ -1553,8 +1497,6 @@ async function ensureRenderer() {
         return `<pre><code class="hljs">${esc}</code></pre>`
       }
     })
-    // 启用锚点插件（为块级 token 注入 data-pos-start/data-line）
-    try { (md as any).use(anchorsPlugin as any) } catch {}
     // 启用 KaTeX 支持（$...$ / $$...$$）
     try {
       const katexPlugin = (await import('markdown-it-katex')).default as any
@@ -1797,7 +1739,7 @@ async function renderPreview() {
   // 重新计算所见模式锚点表
   try { if (wysiwyg) { _wysiwygAnchors = buildAnchors(preview) } } catch {}
   // 所见模式下，确保“模拟光标 _”在预览区可见
-  try { if (wysiwyg) ensureWysiwygCaretDotInView() } catch {}
+  // 旧所见模式移除：不再调整模拟光标
   // 外链安全属性
   preview.querySelectorAll('a[href]').forEach((a) => {
     const el = a as HTMLAnchorElement
@@ -3440,11 +3382,11 @@ function bindEvents() {
   if (btnUploader) btnUploader.addEventListener('click', guard(() => openUploaderDialog()))
 
   // 所见模式：输入/合成结束/滚动时联动渲染与同步
-  editor.addEventListener('input', () => { if (wysiwyg) { autoNewlineAfterBackticksInWysiwyg(); autoNewlineAfterInlineDollarInWysiwyg(); if (!shouldDeferWysiwygRender()) scheduleWysiwygRender(); updateWysiwygLineHighlight(); updateWysiwygCaretDot(); startDotBlink() } scheduleSaveDocPos() })
-  editor.addEventListener('compositionend', () => { if (wysiwyg) { if (!shouldDeferWysiwygRender()) scheduleWysiwygRender(); updateWysiwygLineHighlight(); updateWysiwygCaretDot(); startDotBlink() } scheduleSaveDocPos() })
-  editor.addEventListener('scroll', () => { if (wysiwyg) { syncScrollEditorToPreview(); try { ensureWysiwygCaretDotInView() } catch {}; updateWysiwygCaretDot() } scheduleSaveDocPos() })
-  editor.addEventListener('keyup', (e) => { if (wysiwyg) { if ((shouldDeferWysiwygRender()) && e.key === 'Enter') { wysiwygHoldInlineDollarUntilEnter = false; wysiwygHoldFenceUntilEnter = false; scheduleWysiwygRender() } else if (!shouldDeferWysiwygRender()) { void renderPreview() } updateWysiwygLineHighlight(); updateWysiwygCaretDot(); startDotBlink() } scheduleSaveDocPos() })
-  editor.addEventListener('click', () => { if (wysiwyg) { if (!shouldDeferWysiwygRender()) void renderPreview(); updateWysiwygLineHighlight(); updateWysiwygCaretDot(); startDotBlink() } scheduleSaveDocPos() })
+  editor.addEventListener('input', () => { scheduleSaveDocPos() })
+  editor.addEventListener('compositionend', () => { scheduleSaveDocPos() })
+  editor.addEventListener('scroll', () => { scheduleSaveDocPos() })
+  editor.addEventListener('keyup', () => { scheduleSaveDocPos() })
+  editor.addEventListener('click', () => { scheduleSaveDocPos() })
 
   // 预览滚动也记录阅读位置
   preview.addEventListener('scroll', () => { scheduleSaveDocPos() })
@@ -3508,12 +3450,12 @@ function bindEvents() {
 
             // 转成 Markdown 文本
             const mdText = htmlToMarkdown(safe, { baseUrl })
-            if (mdText && mdText.trim()) {
-              e.preventDefault()
-              insertAtCursor(mdText)
-              if (mode === 'preview') await renderPreview(); else if (wysiwyg) scheduleWysiwygRender()
-              return
-            }
+              if (mdText && mdText.trim()) {
+                e.preventDefault()
+                insertAtCursor(mdText)
+                if (mode === 'preview') await renderPreview();
+                return
+              }
           }
         }
       } catch {}

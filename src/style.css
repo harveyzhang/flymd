@@ -98,7 +98,7 @@ html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); }
 
 .container { height: calc(100% - 32px); position: relative; }
 /* 所见模式：整体容器背景替换为专用色 */
-.container.wysiwyg { background: var(--wysiwyg-bg); }
+.container.wysiwyg { display: none; }
 .container.wysiwyg-v2 { background: var(--bg); }
 
 .editor {
@@ -122,6 +122,9 @@ html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); }
 .container.wysiwyg-v2 #md-wysiwyg-root { display: block; }
 .container.wysiwyg-v2 .editor { display: none; }
 .container.wysiwyg-v2 .preview { display: none !important; }
+/* 保证所见 V2 的滚动容器占满并可滚动 */
+#md-wysiwyg-root, #md-wysiwyg-root * { box-sizing: border-box; }
+#md-wysiwyg-root .scrollView { height: 100%; overflow-y: auto; }
 
 /* 所见模式覆盖：即使预览带有 hidden 类，也强制显示 */
 .container.wysiwyg .preview.hidden { display: block; }

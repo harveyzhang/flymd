@@ -36,6 +36,7 @@ export async function enableWysiwygV2(root: HTMLElement, markdown: string, onCha
         try {
           view.dom.dispatchEvent(new Event('selectionchange'))
           view.updateState(view.state)
+          view.focus()
         } catch {}
       })
     })

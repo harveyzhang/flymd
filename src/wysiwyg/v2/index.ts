@@ -24,6 +24,7 @@ let _lastMd = ''
 let _imgObserver: MutationObserver | null = null
 let _overlayTimer: number | null = null
 let _overlayHost: HTMLDivElement | null = null
+let _hoverTarget: HTMLElement | null = null
 
 function toLocalAbsFromSrc(src: string): string | null {
   try {
@@ -221,6 +222,11 @@ export async function enableWysiwygV2(root: HTMLElement, initialMd: string, onCh
       pm.style.width = '100%'
       // 滚动时也刷新覆盖渲染（重定位预览块）
       try { pm.addEventListener('scroll', () => { try { scheduleOverlayRender() } catch {} }) } catch {}
+      // 悬停命中才渲染：跟踪鼠标移动与离开
+      try {
+        pm.addEventListener('mousemove', (ev: MouseEvent) => { try { _hoverTarget = ev.target as HTMLElement; scheduleOverlayRender() } catch {} })
+        pm.addEventListener('mouseleave', () => { try { _hoverTarget = null; scheduleOverlayRender() } catch {} })
+      } catch {}
     }
     const host = _root?.firstElementChild as HTMLElement | null
     if (host) {
@@ -370,8 +376,8 @@ function renderOverlaysNow() {
   const ov = ensureOverlayHost()
   if (!host || !ov) return
   try { ov.innerHTML = '' } catch {}
-  // 清理上一次为预览预留的 margin 空间
-  try { Array.from(host.querySelectorAll('[data-ov-mb]')).forEach((el) => { try { (el as HTMLElement).style.marginBottom = ''; (el as HTMLElement).removeAttribute('data-ov-mb') } catch {} }) } catch {}
+  // 清理上一次为预览预留的空间
+  try { Array.from(host.querySelectorAll('[data-ov-mb]')).forEach((el) => { try { (el as HTMLElement).style.marginBottom = ''; (el as HTMLElement).style.paddingBottom = ''; (el as HTMLElement).removeAttribute('data-ov-mb') } catch {} }) } catch {}
   const hostRc = (_root as HTMLElement).getBoundingClientRect()
   const addOverlay = (rect: DOMRect, cls: string, render: (el: HTMLDivElement)=>void) => {
     const wrap = document.createElement('div')
@@ -382,7 +388,7 @@ function renderOverlaysNow() {
     wrap.style.width = Math.max(10, rect.width) + 'px'
     wrap.style.pointerEvents = 'none'
     const inner = document.createElement('div')
-    inner.style.pointerEvents = 'auto'
+    inner.style.pointerEvents = 'none'
     inner.style.background = 'var(--bg)'
     inner.style.borderRadius = '8px'
     inner.style.padding = '6px'
@@ -391,57 +397,62 @@ function renderOverlaysNow() {
     ov.appendChild(wrap)
     render(inner)
   }
-  // Mermaid blocks
-  Array.from(host.querySelectorAll('pre')).forEach((pre) => {
+  // 仅针对鼠标悬停的元素渲染覆盖层
+  const target = _hoverTarget
+  if (!target) return
+  // 1) 优先：mermaid 代码块
+  const pre = (target as HTMLElement).closest('pre') as HTMLElement | null
+  if (pre) {
     try {
-      const codeEl = (pre as HTMLElement).querySelector('code') as HTMLElement | null
+      const codeEl = pre.querySelector('code') as HTMLElement | null
       const langFromClass = codeEl ? /\blanguage-([\w-]+)\b/.exec(codeEl.className || '')?.[1] : ''
-      const langFromAttr = ((pre as HTMLElement).getAttribute('data-language') || (pre as HTMLElement).getAttribute('data-lang') || '').toLowerCase()
+      const langFromAttr = (pre.getAttribute('data-language') || pre.getAttribute('data-lang') || '').toLowerCase()
       const lang = (langFromAttr || langFromClass || '').toLowerCase()
-      if (lang !== 'mermaid') return
-      const code = (codeEl?.textContent || '').trim()
-      const rc = (pre as HTMLElement).getBoundingClientRect()
-      addOverlay(rc, 'ov-mermaid', (pane) => {
-        void (async () => {
-          await renderMermaidInto(pane, code)
-          // 渲染完成后根据实际高度为源码块留出空间，避免遮挡下面文本
-          try {
-            const update = () => {
-              const h = pane.offsetHeight
-              ;(pre as HTMLElement).style.paddingBottom = Math.max(8, h + 8) + 'px'
-              ;(pre as HTMLElement).setAttribute('data-ov-mb', '1')
-            }
-            // 下一帧测量，确保布局已更新
-            try { requestAnimationFrame(update) } catch { update() }
-          } catch {}
-        })()
-      })
+      if (lang === 'mermaid') {
+        const code = (codeEl?.textContent || '').trim()
+        const rc = pre.getBoundingClientRect()
+        addOverlay(rc, 'ov-mermaid', (pane) => {
+          void (async () => {
+            await renderMermaidInto(pane, code)
+            try {
+              const update = () => {
+                const h = pane.offsetHeight
+                pre.style.paddingBottom = Math.max(8, h + 8) + 'px'
+                pre.setAttribute('data-ov-mb', '1')
+              }
+              try { requestAnimationFrame(update) } catch { update() }
+            } catch {}
+          })()
+        })
+        return
+      }
     } catch {}
-  })
-  // Block math $$...$$ overlays
-  Array.from(host.querySelectorAll('p,li,div')).forEach((el) => {
+  }
+  // 2) 其次：块级数学 $$...$$ 所在块
+  const blk = (target as HTMLElement).closest('p,li,div') as HTMLElement | null
+  if (blk && !blk.closest('pre')) {
     try {
-      if ((el as HTMLElement).closest('pre')) return
-      const text = el.textContent || ''
+      const text = blk.textContent || ''
       const m = text.match(/\$\$([\s\S]+?)\$\$/)
-      if (!m || !m[1]) return
-      const src = (m[1] || '').trim()
-      const rc = (el as HTMLElement).getBoundingClientRect()
-      addOverlay(rc, 'ov-katex', (pane) => {
-        void (async () => {
-          await renderKatexInto(pane, src, true)
-          try {
-            const update = () => {
-              const h = pane.offsetHeight
-              ;(el as HTMLElement).style.paddingBottom = Math.max(8, h + 8) + 'px'
-              ;(el as HTMLElement).setAttribute('data-ov-mb', '1')
-            }
-            try { requestAnimationFrame(update) } catch { update() }
-          } catch {}
-        })()
-      })
+      if (m && m[1]) {
+        const src = (m[1] || '').trim()
+        const rc = blk.getBoundingClientRect()
+        addOverlay(rc, 'ov-katex', (pane) => {
+          void (async () => {
+            await renderKatexInto(pane, src, true)
+            try {
+              const update = () => {
+                const h = pane.offsetHeight
+                blk.style.paddingBottom = Math.max(8, h + 8) + 'px'
+                blk.setAttribute('data-ov-mb', '1')
+              }
+              try { requestAnimationFrame(update) } catch { update() }
+            } catch {}
+          })()
+        })
+      }
     } catch {}
-  })
+  }
 }
 
 // =============== 所见模式：编辑命令桥接（加粗/斜体/链接） ===============

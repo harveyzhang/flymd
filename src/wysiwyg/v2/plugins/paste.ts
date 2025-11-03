@@ -111,3 +111,4 @@ function toDataUrl(file: File): Promise<string> {
   })
 }
 
+

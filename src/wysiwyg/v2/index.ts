@@ -3,6 +3,8 @@
 
 import { Editor, rootCtx, defaultValueCtx, editorViewOptionsCtx, editorViewCtx } from '@milkdown/core'
 import { convertFileSrc } from '@tauri-apps/api/core'
+import { readFile } from '@tauri-apps/plugin-fs'
+import { readFile } from '@tauri-apps/plugin-fs'
 // 用于外部（main.ts）在所见模式下插入 Markdown（文件拖放时复用普通模式逻辑）
 import { replaceAll } from '@milkdown/utils'
 import { commonmark } from '@milkdown/preset-commonmark'
@@ -75,42 +77,80 @@ function isTauriRuntime(): boolean {
 
 function rewriteLocalImagesToAsset() {
   try {
-    if (!isTauriRuntime()) return
-    const host = _root?.querySelector('.ProseMirror') as HTMLElement | null
+    const host0 = _root as HTMLElement | null
+    const host = (host0?.querySelector('.ProseMirror') as HTMLElement | null) || host0
     if (!host) return
-    const imgs = host.querySelectorAll('img[src]')
-    imgs.forEach((img) => {
+
+    const toDataUrl = async (abs: string): Promise<string | null> => {
       try {
-        const el = img as HTMLImageElement
-        const raw = el.getAttribute('src') || ''
+        const bytes = await readFile(abs as any)
+        const mime = (() => {
+          const m = (abs || '').toLowerCase().match(/\.([a-z0-9]+)$/)
+          switch (m?.[1]) {
+            case 'jpg':
+            case 'jpeg': return 'image/jpeg'
+            case 'png': return 'image/png'
+            case 'gif': return 'image/gif'
+            case 'webp': return 'image/webp'
+            case 'bmp': return 'image/bmp'
+            case 'avif': return 'image/avif'
+            case 'ico': return 'image/x-icon'
+            case 'svg': return 'image/svg+xml'
+            default: return 'application/octet-stream'
+          }
+        })()
+        const blob = new Blob([bytes], { type: mime })
+        return await new Promise<string>((resolve, reject) => {
+          try {
+            const fr = new FileReader()
+            fr.onerror = () => reject(fr.error || new Error('读取图片失败'))
+            fr.onload = () => resolve(String(fr.result || ''))
+            fr.readAsDataURL(blob)
+          } catch (e) { reject(e as any) }
+        })
+      } catch { return null }
+    }
+
+    const convertOne = (imgEl: HTMLImageElement) => {
+      try {
+        const raw = imgEl.getAttribute('src') || ''
         const abs = toLocalAbsFromSrc(raw)
         if (!abs) return
-        const asset = convertFileSrc(abs)
-        if (asset && asset !== el.src) el.src = asset
+        void (async () => {
+          const dataUrl = await toDataUrl(abs)
+          if (dataUrl) {
+            if (imgEl.src !== dataUrl) imgEl.src = dataUrl
+          }
+        })()
       } catch {}
-    })
-    // 监听后续 DOM 变化，保持转换
-    if (_imgObserver) { try { _imgObserver.disconnect() } catch {} }
-    _imgObserver = new MutationObserver(() => {
-      try {
-        const imgs2 = host.querySelectorAll('img[src]')
-        imgs2.forEach((img) => {
-          try {
-            const el = img as HTMLImageElement
-            const raw = el.getAttribute('src') || ''
-            const abs = toLocalAbsFromSrc(raw)
-            if (!abs) return
-            const asset = convertFileSrc(abs)
-            if (asset && asset !== el.src) el.src = asset
-          } catch {}
-        })
-      } catch {}
-    })
-    _imgObserver.observe(host, { subtree: true, attributes: true, attributeFilter: ['src'] })
-  } catch {}
-}
+    }
 
-function cleanupEditorOnly() {
+    host.querySelectorAll('img[src]').forEach((img) => { try { convertOne(img as HTMLImageElement) } catch {} })
+
+    if (_imgObserver) { try { _imgObserver.disconnect() } catch {} }
+    _imgObserver = new MutationObserver((list) => {
+      try {
+        for (const m of list) {
+          if (m.type === 'attributes' && (m.target as any)?.tagName === 'IMG') {
+            const el = m.target as HTMLImageElement
+            if (!m.attributeName || m.attributeName.toLowerCase() === 'src') convertOne(el)
+          } else if (m.type === 'childList') {
+            m.addedNodes.forEach((n) => {
+              try {
+                if ((n as any)?.nodeType === 1) {
+                  const el = n as Element
+                  if (el.tagName === 'IMG') { convertOne(el as any) }
+                  el.querySelectorAll?.('img[src]')?.forEach((img) => { try { convertOne(img as HTMLImageElement) } catch {} })
+                }
+              } catch {}
+            })
+          }
+        }
+      } catch {}
+    })
+    _imgObserver.observe(host, { subtree: true, attributes: true, attributeFilter: ['src'], childList: true })
+  } catch {}
+}function cleanupEditorOnly() {
   try { if (_imgObserver) { _imgObserver.disconnect(); _imgObserver = null } } catch {}
   if (_editor) {
     try { _editor.destroy() } catch {}
@@ -151,6 +191,10 @@ export async function enableWysiwygV2(root: HTMLElement, initialMd: string, onCh
     .use(listener)
     .use(upload)
     .create()
+
+  try { rewriteLocalImagesToAsset() } catch {}
+
+  try { rewriteLocalImagesToAsset() } catch {}
   // 初次渲染后聚焦
   try {
     const view = (editor as any).ctx.get(editorViewCtx)
@@ -183,6 +227,19 @@ export async function enableWysiwygV2(root: HTMLElement, initialMd: string, onCh
   try {
     const ctx = (editor as any).ctx
     const lm = ctx.get(listenerCtx)
+    try {
+      lm.docChanged((_ctx) => {
+        if (_suppressInitialUpdate) return
+        try { if (_writeBackTimer != null) { clearTimeout(_writeBackTimer as any); _writeBackTimer = null } } catch {}
+        _writeBackTimer = window.setTimeout(async () => {
+          try {
+            const md = await (editor as any).action(getMarkdown())
+            _lastMd = md
+            _onChange?.(md)
+          } catch {}
+        }, 80)
+      })
+    } catch {}
     lm.markdownUpdated((_ctx, markdown) => {
       if (_suppressInitialUpdate) return
       // 统一 Windows/UNC/含空格路径的图片写法：在 Markdown 中为目标包上尖括号 <...>
@@ -213,7 +270,11 @@ export async function enableWysiwygV2(root: HTMLElement, initialMd: string, onCh
   _editor = editor
 }
 
-export async function disableWysiwygV2() {
+export async function disableWysiwygV2() {  try {
+    if (_editor) {
+      try { const mdNow = await (_editor as any).action(getMarkdown()) ; _lastMd = mdNow; _onChange?.(mdNow) } catch {}
+    }
+  } catch {}
   try { if (_imgObserver) { _imgObserver.disconnect(); _imgObserver = null } } catch {}
   if (_editor) {
     try { await _editor.destroy() } catch {}
@@ -239,6 +300,9 @@ export async function wysiwygV2ReplaceAll(markdown: string) {
   if (!_editor) return
   try { await _editor.action(replaceAll(markdown)) } catch {}
 }
+
+
+
 
 
 

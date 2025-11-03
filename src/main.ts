@@ -522,7 +522,7 @@ app.innerHTML = `
     <div class="filename" id="filename">未命名</div>
   </div>
   <div class="container">
-    <textarea id="editor" class="editor" spellcheck="false" placeholder="在此输入 Markdown 文本……"></textarea>
+    <textarea id="editor" class="editor" spellcheck="false" placeholder="在此输入 Markdown 文本……（关闭图床且未选择或新建文档情况下直接粘贴图片，编辑模式将把图片放到系统默认图片文件夹/所见模式将使用base64；选择或新建了文档，图片将保存到文档同目录的images文件夹下）"></textarea>
     <div id="preview" class="preview hidden"></div>
     <div class="statusbar" id="status">行 1, 列 1</div>
   </div>

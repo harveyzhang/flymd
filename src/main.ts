@@ -55,6 +55,10 @@ const mermaidSvgCache = new Map<string, { svg: string; renderId: string }>()
 let mermaidSvgCacheVersion = 0
 // 当前 PDF 预览 URL（iframe 使用），用于页内跳转
 let _currentPdfSrcUrl: string | null = null
+// 大纲缓存（Markdown/WYSIWYG）：避免重复重建 DOM
+let _outlineLastSignature = ''
+// PDF 目录缓存：按文件路径缓存解析结果
+const _pdfOutlineCache = new Map<string, Array<{ level: number; title: string; page: number }>>()
 // 所见模式：用于滚动同步的“源位锚点”表
 // 旧所见模式已移除：不再维护锚点表
 
@@ -2969,6 +2973,16 @@ function renderOutlinePanel() {
     }
     if (items.length === 0) { outline.innerHTML = '<div class="empty">未检测到标题</div>'; return }
 
+    // 缓存命中：若本次大纲签名与上次相同，跳过重建，仅更新高亮
+    try {
+      const sig = JSON.stringify(items.map(it => [it.level, it.id, it.text]))
+      if (sig === _outlineLastSignature && outline.childElementCount > 0) {
+        updateOutlineActive();
+        return
+      }
+      _outlineLastSignature = sig
+    } catch {}
+
     // 计算是否有子级（用于折叠/展开，限制到 H1/H2）
     const hasChild = new Map<string, boolean>()
     for (let i = 0; i < items.length; i++) {
@@ -3073,6 +3087,18 @@ async function renderPdfOutline(outlineEl: HTMLDivElement) {
       logWarn('PDF 目录：读取文件失败', e)
       return
     }
+    // 缓存命中直接渲染
+    try {
+      const key = String(currentFilePath || '')
+      if (key && _pdfOutlineCache.has(key)) {
+        const items = _pdfOutlineCache.get(key)!
+        outlineEl.innerHTML = items.map(it => `<div class=\"ol-item lvl-${it.level}\" data-page=\"${it.page}\">${it.title}</div>`).join('')
+        bindPdfOutlineClicks(outlineEl)
+        logDebug('PDF 目录：使用缓存', { count: items.length })
+        return
+      }
+    } catch {}
+
     // 加载文档并提取 outline
     const task = (pdfjs as any).getDocument ? (pdfjs as any).getDocument({ data: bytes, disableWorker: true }) : null
     if (!task) { outlineEl.innerHTML = '<div class="empty">PDF.js 不可用</div>'; logWarn('PDF 目录：getDocument 不可用'); return }
@@ -3099,6 +3125,10 @@ async function renderPdfOutline(outlineEl: HTMLDivElement) {
     }
     await walk(outline, 1)
     if (items.length === 0) { outlineEl.innerHTML = '<div class="empty">目录为空</div>'; logWarn('PDF 目录：目录为空'); return }
+    // PDF 目录缓存复用
+    // 写入缓存
+    try { const k = String(currentFilePath || ''); if (k) _pdfOutlineCache.set(k, items.slice()) } catch {}
+
     outlineEl.innerHTML = items.map(it => `<div class=\"ol-item lvl-${it.level}\" data-page=\"${it.page}\">${it.title}</div>`).join('')
     function navigatePdfPage(page) {
       try {
@@ -3124,16 +3154,40 @@ async function renderPdfOutline(outlineEl: HTMLDivElement) {
         }, 80)
       } catch (e) { logWarn('PDF 目录：导航异常', e) }
     }
-    outlineEl.querySelectorAll('.ol-item').forEach((el) => {
-      el.addEventListener('click', () => {
-        const p = Number((el as HTMLDivElement).dataset.page || '1') || 1
-        navigatePdfPage(p)
-      })
-    })
+    bindPdfOutlineClicks(outlineEl)
   } catch (e) {
     try { outlineEl.innerHTML = '<div class="empty">读取 PDF 目录失败</div>' } catch {}
     logWarn('PDF 目录：异常', e)
   }
+}
+
+function bindPdfOutlineClicks(outlineEl: HTMLDivElement) {
+  try {
+    outlineEl.querySelectorAll('.ol-item').forEach((el) => {
+      el.addEventListener('click', () => {
+        const p = Number((el as HTMLDivElement).dataset.page || '1') || 1
+        try {
+          const iframe = document.querySelector('.pdf-preview iframe') as HTMLIFrameElement | null
+          if (!iframe) { logWarn('PDF 目录：未找到 iframe'); return }
+          const cur = iframe.src || _currentPdfSrcUrl || ''
+          if (!cur) { logWarn('PDF 目录：无有效 iframe.src/base'); return }
+          const baseNoHash = cur.split('#')[0]
+          try { if (iframe.contentWindow) { iframe.contentWindow.location.hash = '#page=' + p; logDebug('PDF 目录：hash 导航', { page: p }) } } catch {}
+          const next = baseNoHash + '#page=' + p
+          try { iframe.src = next; logDebug('PDF 目录：src 导航', { page: p, next }) } catch {}
+          setTimeout(() => {
+            try {
+              const again = document.querySelector('.pdf-preview iframe') as HTMLIFrameElement | null
+              if (!again) return
+              const hard = baseNoHash + '?_=' + Date.now() + '#page=' + p
+              again.src = hard
+              logDebug('PDF 目录：硬刷新导航', { page: p, hard })
+            } catch {}
+          }, 80)
+        } catch (e) { logWarn('PDF 目录：导航异常', e) }
+      })
+    })
+  } catch {}
 }
 
 // 监听 WYSIWYG 内容变更以自动刷新大纲（仅在“所见模式 + 大纲页签可见”时节流刷新）

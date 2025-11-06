@@ -4417,6 +4417,7 @@ function bindEvents() {
         const ta = getEditor(); if (!ta) return
         if (e.target !== ta) return
         if (!isEditMode()) return
+        try { if ((window as any)._imePatchActive) return } catch {}
         if (e.ctrlKey || e.metaKey || e.altKey) return
         const val = String(ta.value || '')
         const s = ta.selectionStart >>> 0
@@ -4458,6 +4459,8 @@ function bindEvents() {
 
         // 通用成对/环绕（不含反引号）
         const close = (openClose as any)[e.key]; if (!close) return
+        // 交给 imePatch 在 beforeinput 阶段处理，避免与此处重复
+        try { if ((window as any)._imePatchActive) return } catch {}
         e.preventDefault()
         if (s !== epos) {
           const before = val.slice(0, s); const mid = val.slice(s, epos); const after = val.slice(epos)
@@ -4710,8 +4713,12 @@ function bindEvents() {
       const cur = editor.value.slice(s, e)
       const match = (_findCase?.checked ? cur === term : cur.toLowerCase() === term.toLowerCase())
       if (!match) { findNext(false); return }
-      const val = String(editor.value || '')
-      editor.value = val.slice(0, s) + rep + val.slice(e)
+      const ta = editor as HTMLTextAreaElement
+      const val = String(ta.value || '')
+      ta.focus(); ta.selectionStart = s; ta.selectionEnd = e
+      if (!insertUndoable(ta, rep)) {
+        editor.value = val.slice(0, s) + rep + val.slice(e)
+      }
       const pos = s + rep.length
       setSel(pos, pos)
       dirty = true; refreshTitle(); refreshStatus(); if (mode === 'preview') { void renderPreview() } else if (wysiwyg) { scheduleWysiwygRender() }
@@ -4721,7 +4728,8 @@ function bindEvents() {
       const term = String(_findInput?.value || '')
       if (!term) return
       const rep = String(_replaceInput?.value || '')
-      const val = String(editor.value || '')
+      const ta = editor as HTMLTextAreaElement
+      const val = String(ta.value || '')
       const hay = norm(val)
       const needle = norm(term)
       if (!needle) return
@@ -4747,7 +4755,10 @@ function bindEvents() {
         }
       }
       if (count > 0) {
-        editor.value = changed
+        ta.focus(); ta.selectionStart = 0; ta.selectionEnd = val.length
+        if (!insertUndoable(ta, changed)) {
+          editor.value = changed
+        }
         const caret = Math.min(editor.value.length, editor.selectionEnd + rep.length)
         setSel(caret, caret)
         dirty = true; refreshTitle(); refreshStatus(); if (mode === 'preview') { void renderPreview() } else if (wysiwyg) { scheduleWysiwygRender() }
@@ -4778,6 +4789,29 @@ function bindEvents() {
     } catch {}
   })
 
+  // 撤销友好插入/删除：通过 execCommand / setRangeText 保持到原生撤销栈
+  function insertUndoable(ta: HTMLTextAreaElement, text: string): boolean {
+    try { ta.focus(); document.execCommand('insertText', false, text); return true } catch {
+      try {
+        const s = ta.selectionStart >>> 0, e = ta.selectionEnd >>> 0
+        ta.setRangeText(text, s, e, 'end')
+        ta.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }))
+        return true
+      } catch { return false }
+    }
+  }
+  function deleteUndoable(ta: HTMLTextAreaElement): boolean {
+    try { ta.focus(); document.execCommand('delete'); return true } catch {
+      const s = ta.selectionStart >>> 0, e = ta.selectionEnd >>> 0
+      if (s !== e) {
+        ta.setRangeText('', s, e, 'end')
+        ta.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }))
+        return true
+      }
+      return false
+    }
+  }
+
   // 编辑模式：成对标记补全（自动/环绕/跳过/成对删除）
   try {
     (editor as HTMLTextAreaElement).addEventListener('keydown', (e: KeyboardEvent) => { if ((e as any).defaultPrevented) return; if (e.ctrlKey || e.metaKey || e.altKey) return
@@ -4799,18 +4833,28 @@ function bindEvents() {
           const after = val.slice(epos)
           const hasNewline = /\n/.test(mid)
           if (_btCount >= 3 || hasNewline) {
-            // 代码块围栏
+            // 代码块围栏（可撤销）
             const content = (epos > s ? ('\n' + mid + '\n') : ('\n\n'))
-            ta.value = before + '```' + content + '```' + after
-            const caret = s + 4 // 在围栏内容第一行
+            ta.selectionStart = s; ta.selectionEnd = epos
+            if (!insertUndoable(ta, '```' + content + '```')) {
+              ta.value = before + '```' + content + '```' + after
+            }
             ta.selectionStart = ta.selectionEnd = (epos > s ? (s + content.length + 3) : (s + 4))
           } else if (_btCount === 2) {
-            // 双反引号：当作行内代码（兼容场景）
-            ta.value = before + '``' + (epos > s ? mid : '') + '``' + after
+            // 双反引号：当作行内代码（兼容场景，可撤销）
+            ta.selectionStart = s; ta.selectionEnd = epos
+            const ins = '``' + (epos > s ? mid : '') + '``'
+            if (!insertUndoable(ta, ins)) {
+              ta.value = before + ins + after
+            }
             if (epos > s) { ta.selectionStart = s + 2; ta.selectionEnd = s + 2 + mid.length } else { ta.selectionStart = ta.selectionEnd = s + 2 }
           } else {
-            // 单反引号：行内代码
-            ta.value = before + '`' + (epos > s ? mid : '') + '`' + after
+            // 单反引号：行内代码（可撤销）
+            ta.selectionStart = s; ta.selectionEnd = epos
+            const ins = '`' + (epos > s ? mid : '') + '`'
+            if (!insertUndoable(ta, ins)) {
+              ta.value = before + ins + after
+            }
             if (epos > s) { ta.selectionStart = s + 1; ta.selectionEnd = s + 1 + mid.length } else { ta.selectionStart = ta.selectionEnd = s + 1 }
           }
           dirty = true; try { refreshTitle(); refreshStatus() } catch {}
@@ -4832,14 +4876,19 @@ function bindEvents() {
       const s = ta.selectionStart >>> 0
       const epos = ta.selectionEnd >>> 0
 
-      // 成对删除：Backspace 位于一对括号/引号之间
+      // 成对删除：Backspace 位于一对括号/引号之间（可撤销）
       if (e.key === 'Backspace' && s === epos && s > 0 && s < val.length) {
         const prev = val[s - 1]
         const next = val[s]
         if (openClose[prev] && openClose[prev] === next) {
           e.preventDefault()
-          ta.value = val.slice(0, s - 1) + val.slice(s + 1)
-          ta.selectionStart = ta.selectionEnd = s - 1
+          ta.selectionStart = s - 1; ta.selectionEnd = s + 1
+          if (!deleteUndoable(ta)) {
+            ta.value = val.slice(0, s - 1) + val.slice(s + 1)
+            ta.selectionStart = ta.selectionEnd = s - 1
+          } else {
+            ta.selectionStart = ta.selectionEnd = s - 1
+          }
           dirty = true; try { refreshTitle(); refreshStatus() } catch {}
           if (mode === 'preview') { try { void renderPreview() } catch {} } else if (wysiwyg) { try { scheduleWysiwygRender() } catch {} }
           return
@@ -4855,6 +4904,8 @@ function bindEvents() {
 
       // 自动/环绕补全
       const close = openClose[e.key]
+      // 交给 imePatch 在 beforeinput 阶段处理，避免与此处重复
+      try { if ((window as any)._imePatchActive) return } catch {}
       if (!close) return
       e.preventDefault()
       if (s !== epos) {

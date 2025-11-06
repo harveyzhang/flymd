@@ -11,6 +11,9 @@
       } catch { return false }
     }
 
+    // 标记 imePatch 激活，用于主模块避免重复键盘钩子处理
+    try { (window as any)._imePatchActive = true } catch {}
+
     const codeClose = (ch: string): string | null => {
       if (!ch || ch.length !== 1) return null
       const c = ch.charCodeAt(0)
@@ -42,6 +45,29 @@
         ;(window as any)._edPrevSelS = ta.selectionStart >>> 0
         ;(window as any)._edPrevSelE = ta.selectionEnd >>> 0
       } catch {}
+    }
+
+    // 撤销友好的插入/删除：优先使用 execCommand，失败则回退到 setRangeText
+    function insertUndoable(ta: HTMLTextAreaElement, text: string): boolean {
+      try { ta.focus(); document.execCommand('insertText', false, text); return true } catch {
+        try {
+          const s = ta.selectionStart >>> 0, e = ta.selectionEnd >>> 0
+          ta.setRangeText(text, s, e, 'end')
+          ta.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }))
+          return true
+        } catch { return false }
+      }
+    }
+    function deleteUndoable(ta: HTMLTextAreaElement): boolean {
+      try { ta.focus(); document.execCommand('delete'); return true } catch {
+        const s = ta.selectionStart >>> 0, e = ta.selectionEnd >>> 0
+        if (s !== e) {
+          ta.setRangeText('', s, e, 'end')
+          ta.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }))
+          return true
+        }
+        return false
+      }
     }
 
     // IME composing guard
@@ -101,29 +127,36 @@
         const s = ta.selectionStart >>> 0
         const e = ta.selectionEnd >>> 0
         const val = String(ta.value || '')
-        // triple backticks fence
+        // 三连反引号：插入围栏（可撤销）
         if (data === '```') {
           ev.preventDefault()
           const mid = val.slice(s, e)
           const content = (e > s ? ('\n' + mid + '\n') : ('\n\n'))
-          ta.value = val.slice(0, s) + '```' + content + '```' + val.slice(e)
+          ta.selectionStart = s; ta.selectionEnd = e
+          if (!insertUndoable(ta, '```' + content + '```')) {
+            ta.value = val.slice(0, s) + '```' + content + '```' + val.slice(e)
+          }
           ta.selectionStart = ta.selectionEnd = (e > s ? (s + content.length + 3) : (s + 4))
           rememberPrev()
           return
         }
         if (data.length === 1) {
-          // skip right closer if already there
-          const closeR = codeClose(data)
-          if (!closeR && val[s] === data && s === e) { ev.preventDefault(); ta.selectionStart = ta.selectionEnd = s + 1; rememberPrev(); return }
+          // 跳过右侧闭合
           const close = codeClose(data)
+          if (!close && val[s] === data && s === e) { ev.preventDefault(); ta.selectionStart = ta.selectionEnd = s + 1; rememberPrev(); return }
           if (close) {
             ev.preventDefault()
             const mid = val.slice(s, e)
+            ta.selectionStart = s; ta.selectionEnd = e
             if (e > s) {
-              ta.value = val.slice(0, s) + data + mid + close + val.slice(e)
+              if (!insertUndoable(ta, data + mid + close)) {
+                ta.value = val.slice(0, s) + data + mid + close + val.slice(e)
+              }
               ta.selectionStart = s + 1; ta.selectionEnd = s + 1 + mid.length
             } else {
-              ta.value = val.slice(0, s) + data + close + val.slice(e)
+              if (!insertUndoable(ta, data + close)) {
+                ta.value = val.slice(0, s) + data + close + val.slice(e)
+              }
               ta.selectionStart = ta.selectionEnd = s + 1
             }
             rememberPrev()

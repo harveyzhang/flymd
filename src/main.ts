@@ -1,4 +1,9 @@
 /*
+
+
+    `
+
+/*
   flymd 主入口（中文注释）
   - 极简编辑器：<textarea>
   - Ctrl+E 切换编辑/阅读
@@ -1319,7 +1324,7 @@ let _wheelHandlerRef: ((e: WheelEvent)=>void) | null = null
     wysiwygLineEl.className = 'wysiwyg-line'
     containerEl.appendChild(wysiwygLineEl)
     wysiwygCaretEl = document.createElement('div') as HTMLDivElement
-    wysiwygCaretEl.id = 'wysiwyg-caret'
+wysiwygCaretEl.id = 'wysiwyg-caret'
     wysiwygCaretEl.className = 'wysiwyg-caret'
     containerEl.appendChild(wysiwygCaretEl)
     // 旧所见模式移除：不再创建覆盖部件
@@ -4242,6 +4247,121 @@ function applyI18nUi() {
 }
 
 function bindEvents() {
+  try { ensureEditorKeyHooksBound() } catch {}
+// 全局：确保编辑器键盘钩子仅绑定一次（切换文档/重开窗也生效）
+  function ensureEditorKeyHooksBound() {
+    try {
+      const w = window as any
+      if (w._editorKeyHooksBound) return
+      w._editorKeyHooksBound = true
+      // 反引号序列状态（全局）
+      w._btCount = 0
+      w._btTimer = null
+      w._btSelS = 0
+      w._btSelE = 0
+
+      const getEditor = (): HTMLTextAreaElement | null => document.getElementById('editor') as HTMLTextAreaElement | null
+      const isEditMode = () => (typeof mode !== 'undefined' && mode === 'edit' && !wysiwyg)
+
+      const pairs: Array<[string, string]> = [["(", ")"],["[", "]"],["{", "}"],["\"", "\""],["'", "'"],["*","*"],["_","_"],["（","）"],["【","】"],["《","》"],["「","」"],["『","』"],["“","”"],["‘","’"]]
+      try { pairs.push([String.fromCharCode(96), String.fromCharCode(96)]) } catch {}
+      const openClose = Object.fromEntries(pairs as any) as Record<string,string>
+      const closers = new Set(Object.values(openClose))
+
+      function handleKeydown(e: KeyboardEvent) {
+        const ta = getEditor(); if (!ta) return
+        if (e.target !== ta) return
+        if (!isEditMode()) return
+        if (e.ctrlKey || e.metaKey || e.altKey) return
+        const val = String(ta.value || '')
+        const s = ta.selectionStart >>> 0
+        const epos = ta.selectionEnd >>> 0
+
+        // 反引号三连/双连/单：优先处理
+        if (e.key === '`') {
+          const w = window as any
+          try { if (w._btTimer) { clearTimeout(w._btTimer); w._btTimer = null } } catch {}
+          w._btCount = (w._btCount || 0) + 1
+          if (w._btCount === 1) { w._btSelS = s; w._btSelE = epos }
+          e.preventDefault()
+          const commit = () => {
+            const s0 = w._btSelS >>> 0, e0 = w._btSelE >>> 0
+            const before = val.slice(0, s0); const mid = val.slice(s0, e0); const after = val.slice(e0)
+            const hasNL = /\n/.test(mid)
+            if (w._btCount >= 3 || hasNL) {
+              const content = (e0 > s0 ? ('\n' + mid + '\n') : ('\n\n'))
+              ta.value = before + '```' + content + '```' + after
+              const caret = (e0 > s0) ? (s0 + content.length + 3) : (s0 + 4)
+              ta.selectionStart = ta.selectionEnd = caret
+            } else if (w._btCount === 2) {
+              ta.value = before + '``' + (e0 > s0 ? mid : '') + '``' + after
+              if (e0 > s0) { ta.selectionStart = s0 + 2; ta.selectionEnd = s0 + 2 + mid.length } else { ta.selectionStart = ta.selectionEnd = s0 + 2 }
+            } else {
+              ta.value = before + '`' + (e0 > s0 ? mid : '') + '`' + after
+              if (e0 > s0) { ta.selectionStart = s0 + 1; ta.selectionEnd = s0 + 1 + mid.length } else { ta.selectionStart = ta.selectionEnd = s0 + 1 }
+            }
+            try { dirty = true; refreshTitle(); refreshStatus() } catch {}
+            if (mode === 'preview') { try { void renderPreview() } catch {} } else if (wysiwyg) { try { scheduleWysiwygRender() } catch {} }
+            w._btCount = 0; w._btTimer = null
+          }
+          const w2 = window as any; w2._btTimer = (setTimeout as any)(commit, 280)
+          return
+        }
+
+        // 跳过右侧
+        if (closers.has(e.key) && s === epos && val[s] === e.key) { e.preventDefault(); ta.selectionStart = ta.selectionEnd = s + 1; return }
+
+        // 通用成对/环绕（不含反引号）
+        const close = (openClose as any)[e.key]; if (!close) return
+        e.preventDefault()
+        if (s !== epos) {
+          const before = val.slice(0, s); const mid = val.slice(s, epos); const after = val.slice(epos)
+          ta.value = before + e.key + mid + close + after
+          ta.selectionStart = s + 1; ta.selectionEnd = s + 1 + mid.length
+        } else {
+          const before = val.slice(0, s); const after = val.slice(epos)
+          ta.value = before + e.key + close + after
+          ta.selectionStart = ta.selectionEnd = s + 1
+        }
+        try { dirty = true; refreshTitle(); refreshStatus() } catch {}
+        if (mode === 'preview') { try { void renderPreview() } catch {} } else if (wysiwyg) { try { scheduleWysiwygRender() } catch {} }
+      }
+
+      function handleTabIndent(e: KeyboardEvent) {
+        const ta = getEditor(); if (!ta) return
+        if (e.target !== ta) return
+        if (!isEditMode()) return
+        if (e.key !== 'Tab' || e.ctrlKey || e.metaKey) return
+        e.preventDefault()
+        const val = String(ta.value || '')
+        const start = ta.selectionStart >>> 0; const end = ta.selectionEnd >>> 0
+        const isShift = !!e.shiftKey; const indent = '  '
+        const lineStart = val.lastIndexOf('\n', start - 1) + 1
+        const sel = val.slice(lineStart, end)
+        if (start !== end && sel.includes('\n')) {
+          const lines = val.slice(lineStart, end).split('\n')
+          const changed = lines.map((ln) => isShift ? (ln.startsWith(indent) ? ln.slice(indent.length) : (ln.startsWith(' \t') ? ln.slice(1) : (ln.startsWith('\t') ? ln.slice(1) : ln))) : (indent + ln)).join('\n')
+          const newVal = val.slice(0, lineStart) + changed + val.slice(end)
+          const delta = changed.length - (end - lineStart)
+          ta.value = newVal; ta.selectionStart = lineStart; ta.selectionEnd = end + delta
+        } else {
+          if (isShift) {
+            const curLineStart = lineStart
+            const cur = val.slice(curLineStart)
+            if (cur.startsWith(indent, start - curLineStart)) { const nv = val.slice(0, start - indent.length) + val.slice(start); ta.value = nv; ta.selectionStart = ta.selectionEnd = start - indent.length }
+            else if ((start - curLineStart) > 0 && val.slice(curLineStart, curLineStart + 1) === '\t') { const nv = val.slice(0, curLineStart) + val.slice(curLineStart + 1); ta.value = nv; const shift = (start > curLineStart) ? 1 : 0; ta.selectionStart = ta.selectionEnd = start - shift }
+          } else {
+            const nv = val.slice(0, start) + indent + val.slice(end); ta.value = nv; ta.selectionStart = ta.selectionEnd = start + indent.length
+          }
+        }
+        try { dirty = true; refreshTitle(); refreshStatus() } catch {}
+        if (mode === 'preview') { try { void renderPreview() } catch {} } else if (wysiwyg) { try { scheduleWysiwygRender() } catch {} }
+      }
+
+      document.addEventListener('keydown', (e) => { try { handleKeydown(e) } catch {} }, true)
+      document.addEventListener('keydown', (e) => { try { handleTabIndent(e) } catch {} }, true)
+    } catch {}
+  }
   // 全局错误捕获
   window.addEventListener('error', (e) => {
     // @ts-ignore
@@ -4280,6 +4400,11 @@ function bindEvents() {
   let _replaceInput: HTMLInputElement | null = null
   let _findCase: HTMLInputElement | null = null
   let _lastFind = ''
+  // 所见/编辑：反引号序列状态（用于 ``` 代码围栏检测）
+  let _btCount = 0
+  let _btTimer: number | null = null
+  let _btSelS = 0
+  let _btSelE = 0
   function ensureFindPanel() {
     if (_findPanel) return
     const panel = document.createElement('div')
@@ -4296,7 +4421,7 @@ function bindEvents() {
     panel.style.padding = '10px 12px'
     panel.style.display = 'none'
     panel.style.minWidth = '300px'
-    panel.innerHTML = 
+    panel.innerHTML = `
       <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
         <input id="find-text" type="text" placeholder="查找... (Enter=下一个, Shift+Enter=上一个)" style="flex:1; padding:6px 8px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--fg);" />
         <label title="区分大小写" style="display:flex; align-items:center; gap:4px; user-select:none;">
@@ -4314,6 +4439,7 @@ function bindEvents() {
         <button id="btn-close-find" style="margin-left:auto; padding:6px 10px;">关闭 (Esc)</button>
       </div>
     
+    `
     document.body.appendChild(panel)
     _findPanel = panel
     _findInput = panel.querySelector('#find-text') as HTMLInputElement
@@ -4430,9 +4556,52 @@ function bindEvents() {
 
   // 编辑模式：成对标记补全（自动/环绕/跳过/成对删除）
   try {
-    (editor as HTMLTextAreaElement).addEventListener('keydown', (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey || e.altKey) return
-      const openClose: Record<string, string> = { '(': ')', '[': ']', '{': '}', '"': '"', "'": "'", '': '', '*': '*', '_': '_' }
+    (editor as HTMLTextAreaElement).addEventListener('keydown', (e: KeyboardEvent) => { if ((e as any).defaultPrevented) return; if (e.ctrlKey || e.metaKey || e.altKey) return
+      // 反引号特殊处理：支持 ``` 围栏（空选区自动补全围栏；有选区则环绕为代码块）
+      if (e.key === '`') {
+        try { if (_btTimer) { clearTimeout(_btTimer); _btTimer = null } } catch {}
+        _btCount = (_btCount || 0) + 1
+        const ta = editor as HTMLTextAreaElement
+        const val = String(ta.value || '')
+        const s0 = ta.selectionStart >>> 0
+        const e0 = ta.selectionEnd >>> 0
+        if (_btCount === 1) { _btSelS = s0; _btSelE = e0 }
+        e.preventDefault()
+        const commit = () => {
+          const s = _btSelS >>> 0
+          const epos = _btSelE >>> 0
+          const before = val.slice(0, s)
+          const mid = val.slice(s, epos)
+          const after = val.slice(epos)
+          const hasNewline = /\n/.test(mid)
+          if (_btCount >= 3 || hasNewline) {
+            // 代码块围栏
+            const content = (epos > s ? ('\n' + mid + '\n') : ('\n\n'))
+            ta.value = before + '```' + content + '```' + after
+            const caret = s + 4 // 在围栏内容第一行
+            ta.selectionStart = ta.selectionEnd = (epos > s ? (s + content.length + 3) : (s + 4))
+          } else if (_btCount === 2) {
+            // 双反引号：当作行内代码（兼容场景）
+            ta.value = before + '``' + (epos > s ? mid : '') + '``' + after
+            if (epos > s) { ta.selectionStart = s + 2; ta.selectionEnd = s + 2 + mid.length } else { ta.selectionStart = ta.selectionEnd = s + 2 }
+          } else {
+            // 单反引号：行内代码
+            ta.value = before + '`' + (epos > s ? mid : '') + '`' + after
+            if (epos > s) { ta.selectionStart = s + 1; ta.selectionEnd = s + 1 + mid.length } else { ta.selectionStart = ta.selectionEnd = s + 1 }
+          }
+          dirty = true; try { refreshTitle(); refreshStatus() } catch {}
+          if (mode === 'preview') { try { void renderPreview() } catch {} } else if (wysiwyg) { try { scheduleWysiwygRender() } catch {} }
+          _btCount = 0; _btTimer = null
+        }
+        _btTimer = (setTimeout as any)(commit, 320)
+        return
+      }
+      const _pairs: Array<[string, string]> = [
+        ["(", ")"], ["[", "]"], ["{", "}"], ['"', '"'], ["'", "'"], ["*", "*"], ["_", "_"],
+        ["（", "）"], ["【", "】"], ["《", "》"], ["「", "」"], ["『", "』"], ["“", "”"], ["‘", "’"]
+      ]
+      try { _pairs.push([String.fromCharCode(96), String.fromCharCode(96)]) } catch {}
+      const openClose: Record<string, string> = Object.fromEntries(_pairs as any)
       const closers = new Set(Object.values(openClose))
       const ta = editor as HTMLTextAreaElement
       const val = String(ta.value || '')
@@ -6125,6 +6294,15 @@ async function loadAndActivateEnabledPlugins(): Promise<void> {
 
 // 将所见模式开关暴露到全局，便于在 WYSIWYG V2 覆盖层中通过双击切换至源码模式
 try { (window as any).flymdSetWysiwygEnabled = async (enable: boolean) => { try { await setWysiwygEnabled(enable) } catch (e) { console.error('flymdSetWysiwygEnabled 调用失败', e) } } } catch {}
+
+
+
+
+
+
+
+
+
 
 
 

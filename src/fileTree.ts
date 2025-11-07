@@ -11,6 +11,8 @@ export type FileTreeOptions = {
   onOpenNewFile?: (path: string) => Promise<void> | void
   // 状态变更回调（选中/展开变化时可通知外层）
   onStateChange?: () => void
+  // 文件被移动后的通知（用于外层更新当前打开文件路径等）
+  onMoved?: (src: string, dst: string) => Promise<void> | void
 }
 
 export type FileTreeAPI = {
@@ -258,6 +260,7 @@ async function buildDir(root: string, dir: string, parent: HTMLElement) {
           const dst = join(e.path, nameOf(src))
           if (src === dst) return
           if (!isInside(root, src) || !isInside(root, dst)) return alert(t('ft.move.within'))
+          let finalDst = dst
           if (await exists(dst)) {
             const choice = await conflictModal(t('ft.exists'), [t('action.overwrite'), t('action.renameAuto'), t('action.cancel')], 1)
             if (choice === 2) return
@@ -266,15 +269,17 @@ async function buildDir(root: string, dir: string, parent: HTMLElement) {
               const stem = nm.replace(/(\.[^.]+)$/,''); const ext = nm.match(/(\.[^.]+)$/)?.[1] || ''
               let i=1, cand=''
               do { cand = `${stem} ${++i}${ext}` } while (await exists(join(e.path, cand)))
-              await moveFileSafe(src, join(e.path, cand))
+              finalDst = join(e.path, cand)
+              await moveFileSafe(src, finalDst)
             } else {
               await moveFileSafe(src, dst)
             }
           } else {
             await moveFileSafe(src, dst)
           }
-          await api.refresh()
-          console.log('[拖动] 移动完成:', src, '→', dst)
+          try { await state.opts?.onMoved?.(src, finalDst) } catch {}
+          await refresh()
+          console.log('[拖动] 移动完成:', src, '→', finalDst)
         } catch (err) { console.error('[拖动] 移动失败:', err) }
       })
     } else {
@@ -305,6 +310,155 @@ async function buildDir(root: string, dir: string, parent: HTMLElement) {
         try { img.setAttribute('src', appIconUrl) } catch {}
         iconEl = img
       }
+      // 让图标与文字都成为可拖拽起点（某些内核仅触发“被按住元素”的拖拽，不会透传到父元素）
+      try { iconEl.setAttribute('draggable', 'true') } catch {}
+      try { label.setAttribute('draggable', 'true') } catch {}
+      // 统一的拖拽启动处理（Edge/WebView2 兼容：设置 dataTransfer 与拖拽影像）
+      let nativeDragStarted = false
+      const startDrag = (ev: DragEvent) => {
+        try {
+          ev.stopPropagation()
+          const dt = ev.dataTransfer
+          if (!dt) return
+          nativeDragStarted = true
+          // 必须至少写入一种类型的数据，否则某些内核会判定为“无效拖拽”
+          dt.setData('text/plain', e.path)
+          // 兼容某些解析器：附带 URI 列表
+          try {
+            const fileUrl = (() => {
+              try {
+                const p = e.path.replace(/\\/g, '/').replace(/^([A-Za-z]):\//, 'file:///$1:/')
+                return p.startsWith('file:///') ? p : ('file:///' + p.replace(/^\//, ''))
+              } catch { return '' }
+            })()
+            if (fileUrl) dt.setData('text/uri-list', fileUrl)
+          } catch {}
+          // 允许移动/复制（由目标决定 dropEffect）
+          dt.effectAllowed = 'copyMove'
+          // 提供拖拽影像，避免出现无预览时的“禁止”提示
+          try { dt.setDragImage(row, 4, 4) } catch {}
+        } catch {}
+      }
+      row.addEventListener('dragstart', startDrag)
+      iconEl.addEventListener('dragstart', startDrag as any)
+      label.addEventListener('dragstart', startDrag as any)
+      // 自绘拖拽兜底：在某些 WebView2 场景下，原生 DnD 会一直显示禁止图标，
+      // 我们在移动阈值触发后启用自绘拖拽，模拟“拖到文件夹释放即可移动”。
+      const setupFallbackDrag = (host: HTMLElement) => {
+        let down = false, sx = 0, sy = 0, moved = false
+        let ghost: HTMLDivElement | null = null
+        let hoverEl: HTMLElement | null = null
+        let prevRowDraggable: string | null = null
+        let prevIconDraggable: string | null = null
+        let prevLabelDraggable: string | null = null
+        const suppressClick = (ev: MouseEvent) => { if (moved) { ev.stopImmediatePropagation(); ev.preventDefault() } }
+        const restoreDraggable = () => {
+          try { if (prevRowDraggable !== null) row.setAttribute('draggable', prevRowDraggable); else row.removeAttribute('draggable') } catch {}
+          try { if (prevIconDraggable !== null) (iconEl as any).setAttribute('draggable', prevIconDraggable); else (iconEl as any).removeAttribute('draggable') } catch {}
+          try { if (prevLabelDraggable !== null) label.setAttribute('draggable', prevLabelDraggable); else label.removeAttribute('draggable') } catch {}
+        }
+        const onMove = (ev: MouseEvent) => {
+          if (!down) return
+          // 若原生拖拽已经启动，放弃兜底
+          if (nativeDragStarted) { cleanup(); return }
+          const dx = ev.clientX - sx, dy = ev.clientY - sy
+          if (!moved && Math.hypot(dx, dy) > 6) {
+            moved = true
+            ghost = document.createElement('div')
+            ghost.textContent = e.name
+            ghost.style.position = 'fixed'
+            ghost.style.left = ev.clientX + 8 + 'px'
+            ghost.style.top = ev.clientY + 8 + 'px'
+            ghost.style.padding = '4px 8px'
+            ghost.style.background = 'rgba(0,0,0,0.65)'
+            ghost.style.color = '#fff'
+            ghost.style.fontSize = '12px'
+            ghost.style.borderRadius = '6px'
+            ghost.style.pointerEvents = 'none'
+            ghost.style.zIndex = '99999'
+            document.body.appendChild(ghost)
+            try { document.body.style.cursor = 'grabbing' } catch {}
+            try { document.body.style.userSelect = 'none' } catch {}
+          }
+          if (moved && ghost) {
+            ghost.style.left = ev.clientX + 8 + 'px'
+            ghost.style.top = ev.clientY + 8 + 'px'
+            // 命中测试：查找鼠标下的目录节点
+            let el = document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null
+            let tgt = el?.closest?.('.lib-node.lib-dir') as HTMLElement | null
+            if (hoverEl && hoverEl !== tgt) hoverEl.classList.remove('selected')
+            if (tgt) tgt.classList.add('selected')
+            hoverEl = tgt
+          }
+          try { ev.preventDefault() } catch {}
+        }
+        const finish = async () => {
+          try {
+            const base = (hoverEl as any)?.dataset?.path as string | undefined
+            if (!moved || !base) return
+            const root = await state.opts!.getRoot()
+            if (!root) return
+            const dst = join(base, nameOf(e.path))
+            if (e.path === dst) return
+            if (!isInside(root, e.path) || !isInside(root, dst)) { alert(t('ft.move.within')); return }
+            let finalDst = dst
+            if (await exists(dst)) {
+              const choice = await conflictModal(t('ft.exists'), [t('action.overwrite'), t('action.renameAuto'), t('action.cancel')], 1)
+              if (choice === 2) return
+              if (choice === 1) {
+                const nm = nameOf(e.path)
+                const stem = nm.replace(/(\.[^.]+)$/,''); const ext = nm.match(/(\.[^.]+)$/)?.[1] || ''
+                let i=1, cand=''
+                do { cand = `${stem} ${++i}${ext}` } while (await exists(join(base, cand)))
+                finalDst = join(base, cand)
+                await moveFileSafe(e.path, finalDst)
+              } else {
+                await moveFileSafe(e.path, dst)
+              }
+            } else {
+              await moveFileSafe(e.path, dst)
+            }
+            try { await state.opts?.onMoved?.(e.path, finalDst) } catch {}
+            await refresh()
+          } catch (err) { console.error('[拖动] 兜底移动失败:', err) }
+        }
+        const cleanup = () => {
+          document.removeEventListener('mousemove', onMove)
+          down = false
+          moved = false
+          try { if (ghost && ghost.parentElement) ghost.parentElement.removeChild(ghost) } catch {}
+          try { document.body.style.cursor = '' } catch {}
+          try { document.body.style.userSelect = '' } catch {}
+          ghost = null
+          if (hoverEl) hoverEl.classList.remove('selected')
+          hoverEl = null
+          try { host.removeEventListener('click', suppressClick, true) } catch {}
+          restoreDraggable()
+        }
+        const onDown = (ev: MouseEvent) => {
+          if (ev.button !== 0) return
+          // 允许文本选择/点击，不阻止默认；兜底触发依靠移动阈值
+          down = true; sx = ev.clientX; sy = ev.clientY; moved = false; nativeDragStarted = false
+          // 暂时禁用原生 DnD，避免阻断 mousemove
+          try {
+            prevRowDraggable = row.getAttribute('draggable')
+            prevIconDraggable = (iconEl as any).getAttribute?.('draggable') ?? null
+            prevLabelDraggable = label.getAttribute('draggable')
+            row.removeAttribute('draggable')
+            ;(iconEl as any).removeAttribute?.('draggable')
+            label.removeAttribute('draggable')
+          } catch {}
+          try { host.addEventListener('click', suppressClick, true) } catch {}
+          document.addEventListener('mousemove', onMove)
+          const onUp = async () => { document.removeEventListener('mouseup', onUp); if (!nativeDragStarted) { await finish() } cleanup() }
+          document.addEventListener('mouseup', onUp, { once: true })
+        }
+        host.addEventListener('mousedown', onDown)
+      }
+      // 将兜底拖拽绑定到整行/图标/文字，确保任意起点都可触发
+      setupFallbackDrag(row)
+      setupFallbackDrag(iconEl)
+      setupFallbackDrag(label)
       row.appendChild(iconEl); row.appendChild(label)
       try { if (ext) row.classList.add('file-ext-' + ext) } catch {}
 
@@ -314,13 +468,6 @@ async function buildDir(root: string, dir: string, parent: HTMLElement) {
       row.addEventListener('dblclick', async () => { await state.opts?.onOpenFile(e.path) })
 
       row.setAttribute('draggable','true')
-      row.addEventListener('dragstart', (ev) => {
-        try {
-          console.log('[拖动] 开始拖动文件:', e.path)
-          ev.dataTransfer?.setData('text/plain', e.path)
-          if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move'
-        } catch {}
-      })
 
       parent.appendChild(row)
     }
@@ -368,6 +515,7 @@ async function renderRoot(root: string) {
       const dst = join(root, nameOf(src))
       if (src === dst) return
       if (!isInside(root, src) || !isInside(root, dst)) return alert(t('ft.move.within'))
+      let finalDst = dst
       if (await exists(dst)) {
         const choice = await conflictModal(t('ft.exists'), [t('action.overwrite'), t('action.renameAuto'), t('action.cancel')], 1)
         if (choice === 2) return
@@ -376,15 +524,17 @@ async function renderRoot(root: string) {
           const stem = nm.replace(/(\.[^.]+)$/,''); const ext = nm.match(/(\.[^.]+)$/)?.[1] || ''
           let i=1, cand=''
           do { cand = `${stem} ${++i}${ext}` } while (await exists(join(root, cand)))
-          await moveFileSafe(src, join(root, cand))
+          finalDst = join(root, cand)
+          await moveFileSafe(src, finalDst)
         } else {
           await moveFileSafe(src, dst)
         }
       } else {
         await moveFileSafe(src, dst)
       }
-      await api.refresh()
-      console.log('[拖动] 移动完成:', src, '→', dst)
+      try { await state.opts?.onMoved?.(src, finalDst) } catch {}
+      await refresh()
+      console.log('[拖动] 移动完成:', src, '→', finalDst)
     } catch (err) { console.error('[拖动] 移动失败:', err) }
   })
 

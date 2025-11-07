@@ -43,6 +43,8 @@
     "markdown-it": "^13.0.2",
     "markdown-it-katex": "^2.0.3",
     "mermaid": "^11.10.0",
-    "pdfjs-dist": "^5.4.394"
+    "pdfjs-dist": "^5.4.394",
+    "html2pdf.js": "^0.10.1",
+    "html-to-docx": "^1.8.0"
   }
 }

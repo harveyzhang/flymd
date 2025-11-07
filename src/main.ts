@@ -3182,12 +3182,54 @@ async function saveAs() {
       return
     }
 
-    const target = await save({ filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }] })
+    const target = await save({ filters: [ { name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }, { name: 'PDF', extensions: ['pdf'] }, { name: 'Word (DOCX)', extensions: ['docx'] }, { name: 'WPS', extensions: ['wps'] } ] })
     if (!target) {
       logDebug('用户取消另存为操作')
       return
     }
     logInfo('另存为文件', { path: target })
+    // 导出分支：根据扩展名处理 PDF/DOCX/WPS
+    const ext = (() => { const m = String(target).toLowerCase().match(/\.([a-z0-9]+)$/); return m ? m[1] : ''; })();
+    if (ext === 'pdf' || ext === 'docx' || ext === 'wps') {
+      try {
+        if (ext === 'pdf') {
+          status.textContent = '正在导出 PDF...';
+          await renderPreview();
+          const el = preview.querySelector('.preview-body') as HTMLElement | null;
+          if (!el) throw new Error('未找到预览内容容器');
+          const { exportPdf } = await import('./exporters/pdf');
+          const bytes = await exportPdf(el, {});
+          await writeFile(target as any, bytes as any);
+        } else {
+          status.textContent = '正在导出 ' + ext.toUpperCase() + '...';
+          await renderPreview();
+          const el = preview.querySelector('.preview-body') as HTMLElement | null;
+          if (!el) throw new Error('未找到预览内容容器');
+          const html = el.outerHTML;
+          if (ext === 'docx') {
+            const { exportDocx } = await import('./exporters/docx');
+            const bytes = await exportDocx(el as any, {});
+            await writeFile(target as any, bytes as any);
+          } else {
+            const { exportWps } = await import('./exporters/wps');
+            const bytes = await exportWps(html as any, {});
+            await writeFile(target as any, bytes as any);
+          }
+        }
+        currentFilePath = target;
+        dirty = false;
+        refreshTitle();
+        await pushRecent(currentFilePath);
+        await renderRecentPanel(false);
+        logInfo('文件导出成功', { path: target, ext });
+        status.textContent = '已导出';
+        setTimeout(() => refreshStatus(), 2000);
+        return;
+      } catch (e) {
+        showError('导出失败', e);
+        return;
+      }
+    }
     try {
       await writeTextFileAnySafe(target, editor.value)
     } catch (e: any) {

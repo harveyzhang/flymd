@@ -11,6 +11,7 @@
 - [生命周期](#生命周期)
 - [示例插件](#示例插件)
 - [发布插件](#发布插件)
+- [主题扩展（Theme）](#主题扩展theme)
 
 ## 概述
 
@@ -275,6 +276,112 @@ context.setEditorValue(current + '\n\n附加的内容');
 - 标记文档为未保存状态
 - 更新标题栏和状态栏
 - 如果在预览模式，会自动重新渲染预览
+
+## 主题扩展（Theme）
+
+flyMD 内置了主题系统，并对外暴露了可选的 Theme 扩展 API，便于插件对“颜色调色板、排版风格、Markdown 渲染风格”进行扩展或覆写。
+
+### 能力概览
+
+- 颜色调色板：在主题面板中追加可选颜色（用于编辑/阅读/所见三种背景）
+- 排版风格：为现有排版风格覆写 CSS（字体/字号/行距等）
+- Markdown 风格：为现有风格覆写 CSS（标题、引用、代码块、表格等）
+- 主题偏好：读取/保存/应用当前主题设置
+- 主题事件：监听主题变更，联动插件 UI
+
+注意：当前版本 ID 列表为固定集合，注册不存在的 ID 将被忽略。
+
+- Typography ID（排版风格）：`default | serif | modern | reading | academic`
+- Markdown Style ID（MD 风格）：`standard | github | notion | journal | card | docs`
+
+### 全局对象与 API
+
+在渲染进程中可直接访问全局对象：`window.flymdTheme`
+
+```ts
+interface ThemePrefs {
+  editBg: string       // 编辑背景
+  readBg: string       // 阅读背景
+  wysiwygBg: string    // 所见背景
+  typography: 'default' | 'serif' | 'modern' | 'reading' | 'academic'
+  mdStyle:   'standard' | 'github' | 'notion' | 'journal' | 'card' | 'docs'
+}
+
+// 扩展入口
+flymdTheme.registerPalette(label: string, color: string, id?: string): void
+flymdTheme.registerTypography(id: ThemePrefs['typography'], label: string, css?: string): void
+flymdTheme.registerMdStyle(id: ThemePrefs['mdStyle'], label: string, css?: string): void
+
+// 主题状态
+flymdTheme.applyThemePrefs(prefs: ThemePrefs): void
+flymdTheme.saveThemePrefs(prefs: ThemePrefs): void
+flymdTheme.loadThemePrefs(): ThemePrefs
+
+// 主题变更事件（插件可监听联动）
+window.addEventListener('flymd:theme:changed', (e) => {
+  const prefs = (e.detail || {}).prefs
+  console.log('Theme changed:', prefs)
+})
+```
+
+### 使用示例：增加调色板 + 调整 Docs 风格代码高亮
+
+```js
+// main.js（插件）
+export function activate(context) {
+  // 1) 增加两种可选颜色到主题面板
+  flymdTheme.registerPalette('薰衣草', '#ede9fe')
+  flymdTheme.registerPalette('薄荷绿', '#e8fff4')
+
+  // 2) 为 Docs 风格追加/覆写一段 CSS（仅在 md-docs 生效）
+  flymdTheme.registerMdStyle('docs', 'Docs', `
+    .container.md-docs { --c-key:#1f4eff; --c-str:#0ea5e9; --c-num:#d97706; --c-fn:#7c3aed; --c-com:#94a3b8; }
+    @media (prefers-color-scheme: dark) {
+      .container.md-docs { --c-key:#93c5fd; --c-str:#67e8f9; --c-num:#fdba74; --c-fn:#c4b5fd; --c-com:#9ca3af; }
+    }
+  `)
+
+  // 3) 快速应用某一主题偏好（示例：将阅读背景切到薰衣草）
+  const prefs = flymdTheme.loadThemePrefs()
+  prefs.readBg = '#ede9fe'
+  flymdTheme.saveThemePrefs(prefs)
+  flymdTheme.applyThemePrefs(prefs)
+
+  context.ui.notice('主题扩展已加载', 'ok')
+}
+```
+
+### 使用示例：调整排版风格（阅读）
+
+```js
+export function activate() {
+  // 为“阅读”排版风格追加更大行距（不会影响其它风格）
+  flymdTheme.registerTypography('reading', '阅读', `
+    .container.typo-reading .preview-body,
+    .container.typo-reading.wysiwyg-v2 .ProseMirror { line-height: 2.0; font-size: 18px; }
+  `)
+}
+```
+
+### 可用 CSS 变量（主题相关）
+
+- 布局基色
+  - `--bg` 编辑背景（应用于 `.container` 作用域）
+  - `--preview-bg` 阅读背景（`.container:not(.wysiwyg):not(.wysiwyg-v2) .preview`）
+  - `--wysiwyg-bg` 所见背景（`.container.wysiwyg-v2`）
+- 代码配色（高亮 token）
+  - `--code-bg`、`--code-border`、`--code-fg`
+  - `--c-key`、`--c-str`、`--c-num`、`--c-fn`、`--c-com`
+- 代码块装饰
+  - `--code-pre-pad-y` 代码块基础上下内边距（结合语言角标让位）
+  - `--code-lang-gap` 语言角标让位额外高度（定义在 `.codebox`）
+
+### 注意事项与最佳实践
+
+- 避免直接覆盖 `.codebox pre` 的 `padding-top`，统一通过 `--code-pre-pad-y + --code-lang-gap` 让位，防止语言角标与首行重叠。
+- Typography/MdStyle 的 `id` 目前为固定集合；可通过传入 `css` 来细化、覆写现有风格。
+- 使用 `applyThemePrefs` 修改主题只影响当前会话；配合 `saveThemePrefs` 可持久化到下一次启动。
+- 监听 `flymd:theme:changed` 事件可实现插件 UI 与主题的联动更新。
 
 ## 生命周期
 

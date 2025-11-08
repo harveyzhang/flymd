@@ -2742,6 +2742,12 @@ type CheckUpdateResp = {
   assetMacosArm?: UpdateAssetInfo | null
 }
 
+// 可选的“额外信息”注入：位于 public/update-extra.json，由运维/作者按需维护
+type UpdateExtra = {
+  html?: string
+  links?: { text: string; href: string }[]
+}
+
 async function openInBrowser(url: string) {
   try {
     if (isTauriRuntime()) { await openUrl(url) }
@@ -2796,7 +2802,7 @@ function ensureUpdateOverlay(): HTMLDivElement {
   return div
 }
 
-function showUpdateOverlayLinux(resp: CheckUpdateResp) {
+async function showUpdateOverlayLinux(resp: CheckUpdateResp) {
 
 function showUpdateDownloadedOverlay(savePath: string, resp: CheckUpdateResp) {
   const ov = ensureUpdateOverlay()
@@ -2825,10 +2831,15 @@ function showUpdateDownloadedOverlay(savePath: string, resp: CheckUpdateResp) {
   const ov = ensureUpdateOverlay()
   const body = ov.querySelector('#update-body') as HTMLDivElement
   const act = ov.querySelector('#update-actions') as HTMLDivElement
-  body.innerHTML = `
-    <div style="margin-bottom:8px;">发现新版本：<b>${resp.latest}</b>（当前：${resp.current}）</div>
-    <div style="white-space:pre-wrap;max-height:240px;overflow:auto;border:1px solid var(--fg-muted);padding:8px;border-radius:6px;">${(resp.notes||'').replace(/</g,'&lt;')}</div>
-  `
+  try {
+    const extra = await loadUpdateExtra().catch(() => null)
+    body.innerHTML = await renderUpdateDetailsHTML(resp, extra)
+  } catch {
+    body.innerHTML = `
+      <div style="margin-bottom:8px;">发现新版本：<b>${resp.latest}</b>（当前：${resp.current}）</div>
+      <div style="white-space:pre-wrap;max-height:240px;overflow:auto;border:1px solid var(--fg-muted);padding:8px;border-radius:6px;">${(resp.notes||'').replace(/</g,'&lt;')}</div>
+    `
+  }
   act.innerHTML = ''
   const mkBtn = (label: string, onClick: () => void) => {
     const b = document.createElement('button')
@@ -2856,6 +2867,7 @@ async function checkUpdateInteractive() {
     const resp = await invoke('check_update', { force: true, include_prerelease: false }) as any as CheckUpdateResp
     if (!resp || !resp.hasUpdate) { setUpdateBadge(false); upMsg(`已是最新版本 v${APP_VERSION}`); return }
     setUpdateBadge(true, `发现新版本 v${resp.latest}`)
+    const USE_OVERLAY_UPDATE = true; if (USE_OVERLAY_UPDATE) { await showUpdateOverlay(resp); return }
     // Windows：自动下载并运行；Linux：展示两个下载链接（依据后端返回的资产类型判断）
     if (resp.assetWin) {
       if (!resp.assetWin) { upMsg('发现新版本，但未找到 Windows 安装包'); await openInBrowser(resp.htmlUrl); return }
@@ -2932,6 +2944,159 @@ async function checkUpdateInteractive() {
   } catch (e) {
     upMsg('检查更新失败')
   }
+}
+
+// 读取可选的额外信息（不存在则返回 null）
+async function loadUpdateExtra(): Promise<UpdateExtra | null> {
+  try {
+    const url = '/update-extra.json?ts=' + Date.now()
+    const res = await fetch(url, { cache: 'no-store' })
+    if (!res.ok) return null
+    const raw = await res.json()
+    const out: UpdateExtra = {}
+    if (raw && typeof raw.html === 'string') out.html = String(raw.html)
+    if (raw && Array.isArray(raw.links)) {
+      out.links = []
+      for (const it of raw.links) {
+        const text = (it && typeof it.text === 'string') ? String(it.text) : ''
+        const href = (it && typeof it.href === 'string') ? String(it.href) : ''
+        if (!text || !href) continue
+        // 仅允许 http/https 链接，其他协议忽略
+        if (!/^https?:\/\//i.test(href)) continue
+        out.links.push({ text, href })
+      }
+      if (out.links.length === 0) delete (out as any).links
+    }
+    if (!out.html && !out.links) return null
+    return out
+  } catch { return null }
+}
+
+// 渲染更新详情（含版本与 notes），使用 markdown-it + DOMPurify 做安全渲染；支持注入 extra
+async function renderUpdateDetailsHTML(resp: CheckUpdateResp, extra?: UpdateExtra | null): Promise<string> {
+  try { await ensureRenderer() } catch {}
+  try {
+    if (!sanitizeHtml) {
+      try { const mod: any = await import('dompurify'); const DOMPurify = mod?.default || mod; sanitizeHtml = (h: string, cfg?: any) => DOMPurify.sanitize(h, cfg) } catch { sanitizeHtml = (h: string) => h }
+    }
+  } catch {}
+  let html = ''
+  try { html = md ? md.render(resp.notes || '') : (resp.notes || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\n/g,'<br>') } catch { html = (resp.notes || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\n/g,'<br>') }
+  const safe = sanitizeHtml!(html)
+  const head = `<div class="update-title">发现新版本 <b>v${resp.latest}</b>（当前 v${resp.current}）</div>`
+  const box = `<div class="update-notes" style="max-height:260px;overflow:auto;border:1px solid var(--fg-muted);padding:8px;border-radius:6px;">${safe}</div>`
+  let extraHtml = ''
+  if (extra && extra.html) {
+    try { extraHtml += `<div class="update-extra" style="margin-top:8px;">${sanitizeHtml!(extra.html)}</div>` } catch {}
+  }
+  if (extra && extra.links && extra.links.length) {
+    const items = extra.links.map(it => {
+      const txt = (it.text || '').replace(/</g,'&lt;').replace(/&/g,'&amp;')
+      // href 已经在 loadUpdateExtra 中做过协议白名单校验
+      const href = it.href
+      return `<li><a href="${href}" target="_blank" rel="noopener noreferrer">${txt}</a></li>`
+    }).join('')
+    extraHtml += `<ul class="update-links" style="margin-top:8px;padding-left:18px;">${items}</ul>`
+  }
+  return head + box + extraHtml
+}
+
+// 安装失败提示窗口：提示“自动安装失败，请手动安装”，提供“打开下载目录”与“发布页”
+function showInstallFailedOverlay(savePath: string, resp: CheckUpdateResp) {
+  const ov = ensureUpdateOverlay()
+  const body = ov.querySelector('#update-body') as HTMLDivElement
+  const act = ov.querySelector('#update-actions') as HTMLDivElement
+  const esc = (s: string) => (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;')
+  const dir = savePath.replace(/[\\/][^\\/]+$/, '')
+  body.innerHTML = `
+    <div style="margin-bottom:8px;color:var(--warn-color, #d33);">自动安装失败，请手动安装</div>
+    <div>保存位置：<code>${esc(savePath)}</code></div>
+  `
+  act.innerHTML = ''
+  const mkBtn = (label: string, onClick: () => void) => { const b = document.createElement('button'); b.textContent = label; b.addEventListener('click', onClick); act.appendChild(b); return b }
+  mkBtn('打开下载目录', () => { if (dir) void openPath(dir) })
+  mkBtn('前往发布页', () => { void openInBrowser(resp.htmlUrl) })
+  mkBtn('关闭', () => ov.classList.add('hidden'))
+  ov.classList.remove('hidden')
+}
+
+// Windows：下载并尝试安装（直连/代理轮试），失败时弹出失败提示
+async function downloadAndInstallWin(asset: UpdateAssetInfo, resp: CheckUpdateResp) {
+  try {
+    upMsg('正在下载安装包…')
+    let savePath = ''
+    const direct = asset.directUrl
+    const urls = [
+      direct,
+      'https://gh-proxy.com/' + direct,
+      'https://cdn.gh-proxy.com/' + direct,
+      'https://edgeone.gh-proxy.com/' + direct,
+    ]
+    let ok = false
+    for (const u of urls) {
+      try {
+        // 传 useProxy: false，避免后端二次拼接代理
+        savePath = await (invoke as any)('download_file', { url: u, useProxy: false }) as string
+        ok = true
+        break
+      } catch {}
+    }
+    if (!ok) throw new Error('all proxies failed')
+    upMsg('下载完成，正在启动安装…')
+    try {
+      await (invoke as any)('run_installer', { path: savePath })
+      upMsg('已启动安装程序，即将关闭…')
+      try { setTimeout(() => { try { void getCurrentWindow().destroy() } catch {} }, 800) } catch {}
+    } catch (e) {
+      // 安装启动失败 → 弹失败窗口
+      showInstallFailedOverlay(savePath, resp)
+    }
+  } catch (e) {
+    upMsg('下载或启动安装失败，将打开发布页')
+    try { await openInBrowser(resp.htmlUrl) } catch {}
+  }
+}
+
+// 统一的更新弹窗：展示 notes，并按平台提供操作按钮
+async function showUpdateOverlay(resp: CheckUpdateResp) {
+  const ov = ensureUpdateOverlay()
+  const body = ov.querySelector('#update-body') as HTMLDivElement
+  const act = ov.querySelector('#update-actions') as HTMLDivElement
+  const extra = await loadUpdateExtra().catch(() => null)
+  body.innerHTML = await renderUpdateDetailsHTML(resp, extra)
+  act.innerHTML = ''
+  const mkBtn = (label: string, onClick: () => void) => { const b = document.createElement('button'); b.textContent = label; b.addEventListener('click', onClick); act.appendChild(b); return b }
+
+  // Windows：立即更新 + 发布页
+  if (resp.assetWin) {
+    mkBtn('立即更新', () => { ov.classList.add('hidden'); void downloadAndInstallWin(resp.assetWin!, resp) })
+    mkBtn('发布页', () => { void openInBrowser(resp.htmlUrl) })
+    ov.classList.remove('hidden')
+    return
+  }
+  // macOS：若提供资产，直接下载后 open；否则仅发布页
+  if (resp.assetMacosArm || resp.assetMacosX64) {
+    const a = (resp.assetMacosArm || resp.assetMacosX64) as UpdateAssetInfo
+    mkBtn('立即更新', async () => {
+      ov.classList.add('hidden')
+      try {
+        upMsg('正在下载安装包…')
+        let savePath = ''
+        const direct = a.directUrl
+        const urls = [direct, 'https://gh-proxy.com/' + direct, 'https://cdn.gh-proxy.com/' + direct, 'https://edgeone.gh-proxy.com/' + direct]
+        let ok = false
+        for (const u of urls) { try { savePath = await (invoke as any)('download_file', { url: u, useProxy: false }) as string; ok = true; break } catch {} }
+        if (!ok) throw new Error('all proxies failed')
+        upMsg('下载完成，正在打开…')
+        try { await openPath(savePath) } catch { showInstallFailedOverlay(savePath, resp) }
+      } catch { try { await openInBrowser(resp.htmlUrl) } catch {} }
+    })
+    mkBtn('发布页', () => { void openInBrowser(resp.htmlUrl) })
+    ov.classList.remove('hidden')
+    return
+  }
+  // Linux：沿用现有按钮组
+  showUpdateOverlayLinux(resp)
 }
 
 function checkUpdateSilentOnceAfterStartup() {

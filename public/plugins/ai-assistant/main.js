@@ -475,9 +475,17 @@ async function mountWindow(context){
 
 async function toggleWindow(context){
   let el = elById('ai-assist-win')
-  if (!el) el = await mountWindow(context)
-  el.style.display = (el.style.display==='none'?'block':'none')
-  if (el.style.display==='block') { setDockPush(true); await ensureSessionForDoc(context); await refreshHeader(context) } else { setDockPush(false) }
+  if (!el) {
+    el = await mountWindow(context)
+    // 首次创建：直接显示并初始化
+    el.style.display = 'block'
+    setDockPush(true)
+    await ensureSessionForDoc(context); await refreshHeader(context)
+    return
+  }
+  const visible = (() => { try { return WIN().getComputedStyle(el).display !== 'none' } catch { return el.style.display !== 'none' } })()
+  el.style.display = visible ? 'none' : 'block'
+  if (!visible) { setDockPush(true); await ensureSessionForDoc(context); await refreshHeader(context) } else { setDockPush(false) }
 }
 
 async function toggleWinSizePreset(context, el){

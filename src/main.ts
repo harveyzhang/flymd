@@ -4835,13 +4835,8 @@ function showLangMenu() {
   showTopMenu(anchor, items)
 }
 
-// 刷新库路径显示与文件树（refreshTree: 是否刷新文件树）
+// 刷新文件树（不再显示库路径）
 async function refreshLibraryUiAndTree(refreshTree = true) {
-  try {
-    const elPath = document.getElementById('lib-path') as HTMLDivElement | null
-    const root = await getLibraryRoot()
-    if (elPath) elPath.textContent = root || ''
-  } catch {}
   if (!refreshTree) return
   try {
     const treeEl = document.getElementById('lib-tree') as HTMLDivElement | null
@@ -4870,7 +4865,7 @@ async function showLibraryMenu() {
     const items: TopMenuItemSpec[] = []
     for (const lib of libs) {
       const cur = lib.id === activeId
-      const label = (cur ? '★ ' : '') + (lib.name || lib.root)
+      const label = (cur ? "\u2714\uFE0E " : '') + lib.name
       items.push({
         label,
         action: async () => {
@@ -6527,8 +6522,8 @@ function bindEvents() {
     console.log('flyMD (飞速MarkDown) 应用启动...')
     try { logInfo('打点:JS启动') } catch {}
 
-    // 尝试初始化存储（失败不影响启动）
-    void initStore()
+    // 尝试初始化存储（确保完成后再加载扩展，避免读取不到已安装列表）
+    await initStore()
 
     // 开发模式：不再自动打开 DevTools，改为快捷键触发，避免干扰首屏
     // 快捷键见下方全局 keydown（F12 或 Ctrl+Shift+I）
@@ -6540,7 +6535,7 @@ function bindEvents() {
     // 依据当前语言，应用一次 UI 文案（含英文简写，避免侧栏溢出）
     try { applyI18nUi() } catch {}
     try { logInfo('打点:事件绑定完成') } catch {}
-    // 扩展：初始化目录并激活已启用扩展
+    // 扩展：初始化目录并激活已启用扩展（此时 Store 已就绪）
     try { await ensurePluginsDir(); await loadAndActivateEnabledPlugins() } catch {}
     try { await initWebdavSync() } catch {}
     // 绑定扩展按钮
@@ -7482,6 +7477,7 @@ try {
     } catch (e) { console.error('flymdSetPluginMarketUrl 失败', e); return false }
   }
 } catch {}
+
 
 
 

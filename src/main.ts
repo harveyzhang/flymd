@@ -37,6 +37,8 @@ import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import fileTree from './fileTree'
 import { uploadImageToS3R2, type UploaderConfig } from './uploader/s3'
 import { transcodeToWebpIfNeeded } from './utils/image'
+// 方案A：多库管理（统一 libraries/activeLibraryId）
+import { getLibraries, getActiveLibraryId, getActiveLibraryRoot, setActiveLibraryId as setActiveLibId, upsertLibrary, removeLibrary as removeLib, renameLibrary as renameLib } from './utils/library'
 import appIconUrl from '../Flymdnew.png?url'
 import goodImgUrl from '../good.png?url'
 import { decorateCodeBlocks } from './decorate'
@@ -1753,6 +1755,8 @@ wysiwygCaretEl.id = 'wysiwyg-caret'
     if (elPath) elPath.textContent = ''
     if (elChoose) elChoose.textContent = t('lib.choose')
     if (elRefresh) elRefresh.textContent = t('lib.refresh')
+    // 初次渲染尝试同步库路径显示（若已存在旧配置）
+    try { void refreshLibraryUiAndTree(false) } catch {}
     // 绑定二级标签：文件 / 大纲
     const tabFiles = library.querySelector('#lib-tab-files') as HTMLButtonElement | null
     const tabOutline = library.querySelector('#lib-tab-outline') as HTMLButtonElement | null
@@ -3675,19 +3679,13 @@ async function switchToPreviewAfterOpen() {
 type LibEntry = { name: string; path: string; isDir: boolean }
 
 async function getLibraryRoot(): Promise<string | null> {
-  try {
-    if (!store) return null
-    const val = await store.get('libraryRoot')
-    return (typeof val === 'string' && val) ? val : null
-  } catch { return null }
+  // 统一通过 utils 获取当前激活库（兼容 legacy）
+  try { return await getActiveLibraryRoot() } catch { return null }
 }
 
 async function setLibraryRoot(p: string) {
-  try {
-    if (!store) return
-    await store.set('libraryRoot', p)
-    await store.save()
-  } catch {}
+  // 兼容旧代码：设置库路径即插入/更新库并设为激活
+  try { await upsertLibrary({ root: p }) } catch {}
 }
 
 // 库排序偏好（持久化）
@@ -4837,6 +4835,73 @@ function showLangMenu() {
   showTopMenu(anchor, items)
 }
 
+// 刷新库路径显示与文件树（refreshTree: 是否刷新文件树）
+async function refreshLibraryUiAndTree(refreshTree = true) {
+  try {
+    const elPath = document.getElementById('lib-path') as HTMLDivElement | null
+    const root = await getLibraryRoot()
+    if (elPath) elPath.textContent = root || ''
+  } catch {}
+  if (!refreshTree) return
+  try {
+    const treeEl = document.getElementById('lib-tree') as HTMLDivElement | null
+    if (treeEl && !fileTreeReady) {
+      await fileTree.init(treeEl, {
+        getRoot: getLibraryRoot,
+        onOpenFile: async (p: string) => { await openFile2(p) },
+        onOpenNewFile: async (p: string) => { await openFile2(p); mode='edit'; preview.classList.add('hidden'); try { (editor as HTMLTextAreaElement).focus() } catch {} },
+        onMoved: async (src: string, dst: string) => { try { if (currentFilePath === src) { currentFilePath = dst as any; refreshTitle() } } catch {} }
+      })
+      fileTreeReady = true
+    } else if (treeEl) {
+      await fileTree.refresh()
+    }
+    try { const s = await getLibrarySort(); fileTree.setSort(s); await fileTree.refresh() } catch {}
+  } catch {}
+}
+
+// 库选择菜单：列出已保存库、切换/新增/重命名/删除
+async function showLibraryMenu() {
+  const anchor = document.getElementById('lib-choose') as HTMLButtonElement | null
+  if (!anchor) return
+  try {
+    const libs = await getLibraries()
+    const activeId = await getActiveLibraryId()
+    const items: TopMenuItemSpec[] = []
+    for (const lib of libs) {
+      const cur = lib.id === activeId
+      const label = (cur ? '★ ' : '') + (lib.name || lib.root)
+      items.push({
+        label,
+        action: async () => {
+          try { await setActiveLibId(lib.id) } catch {}
+          await refreshLibraryUiAndTree(true)
+        }
+      })
+    }
+    // 末尾操作项
+    items.push({ label: '新增库…', action: async () => { const p = await pickLibraryRoot(); if (p) await refreshLibraryUiAndTree(true) } })
+    items.push({ label: '重命名当前库…', action: async () => {
+      const id = await getActiveLibraryId(); if (!id) return
+      const libs2 = await getLibraries()
+      const cur = libs2.find(x => x.id === id)
+      const oldName = cur?.name || ''
+      const name = await openRenameDialog(oldName, '')
+      if (!name || name === oldName) return
+      try { await renameLib(id, name) } catch {}
+      await refreshLibraryUiAndTree(false)
+    } })
+    items.push({ label: '删除当前库', action: async () => {
+      const id = await getActiveLibraryId(); if (!id) return
+      const ok = await ask('确认删除当前库？')
+      if (!ok) return
+      try { await removeLib(id) } catch {}
+      await refreshLibraryUiAndTree(true)
+    } })
+    showTopMenu(anchor, items)
+  } catch {}
+}
+
 function applyI18nUi() {
   try {
     // 菜单
@@ -5911,6 +5976,7 @@ function bindEvents() {
     showLibrary(true)
     let root = await getLibraryRoot()
     if (!root) root = await pickLibraryRoot()
+    try { await refreshLibraryUiAndTree(false) } catch {}
     const treeEl = document.getElementById('lib-tree') as HTMLDivElement | null; if (treeEl && !fileTreeReady) { await fileTree.init(treeEl, { getRoot: getLibraryRoot, onOpenFile: async (p: string) => { await openFile2(p) }, onOpenNewFile: async (p: string) => { await openFile2(p); mode='edit'; preview.classList.add('hidden'); try { (editor as HTMLTextAreaElement).focus() } catch {} }, onMoved: async (src: string, dst: string) => { try { if (currentFilePath === src) { currentFilePath = dst as any; refreshTitle() } } catch {} } }); fileTreeReady = true } else if (treeEl) { await fileTree.refresh() }
     // 应用持久化的排序偏好
     try { const s = await getLibrarySort(); fileTree.setSort(s); await fileTree.refresh() } catch {}
@@ -6316,7 +6382,7 @@ function bindEvents() {
   try {
     const chooseBtn = document.getElementById('lib-choose') as HTMLButtonElement | null
     const refreshBtn = document.getElementById('lib-refresh') as HTMLButtonElement | null
-    if (chooseBtn) chooseBtn.addEventListener('click', guard(async () => { await pickLibraryRoot(); const treeEl = document.getElementById('lib-tree') as HTMLDivElement | null; if (treeEl && !fileTreeReady) { await fileTree.init(treeEl, { getRoot: getLibraryRoot, onOpenFile: async (p: string) => { await openFile2(p) }, onOpenNewFile: async (p: string) => { await openFile2(p); mode='edit'; preview.classList.add('hidden'); try { (editor as HTMLTextAreaElement).focus() } catch {} }, onMoved: async (src: string, dst: string) => { try { if (currentFilePath === src) { currentFilePath = dst as any; refreshTitle() } } catch {} } }); fileTreeReady = true } else if (treeEl) { await fileTree.refresh() } try { const s = await getLibrarySort(); fileTree.setSort(s); await fileTree.refresh() } catch {} }))
+    if (chooseBtn) chooseBtn.addEventListener('click', guard(async () => { await showLibraryMenu() }))
     if (refreshBtn) refreshBtn.addEventListener('click', guard(async () => { const treeEl = document.getElementById('lib-tree') as HTMLDivElement | null; if (treeEl && !fileTreeReady) { await fileTree.init(treeEl, { getRoot: getLibraryRoot, onOpenFile: async (p: string) => { await openFile2(p) }, onOpenNewFile: async (p: string) => { await openFile2(p); mode='edit'; preview.classList.add('hidden'); try { (editor as HTMLTextAreaElement).focus() } catch {} }, onMoved: async (src: string, dst: string) => { try { if (currentFilePath === src) { currentFilePath = dst as any; refreshTitle() } } catch {} } }); fileTreeReady = true } else if (treeEl) { await fileTree.refresh() } try { const s = await getLibrarySort(); fileTree.setSort(s); await fileTree.refresh() } catch {} }))
   } catch {}
 

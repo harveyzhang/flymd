@@ -3,6 +3,7 @@
 // - 仅按最后修改时间比较；新者覆盖旧者；不做合并
 
 import { Store } from '@tauri-apps/plugin-store'
+import { getActiveLibraryRoot } from '../utils/library'
 import { readDir, stat, readFile, writeFile, mkdir, exists, open as openFileHandle, BaseDirectory, remove } from '@tauri-apps/plugin-fs'
 import { appLocalDataDir } from '@tauri-apps/api/path'
 import { openPath } from '@tauri-apps/plugin-opener'
@@ -294,9 +295,7 @@ export async function setWebdavSyncConfig(next: Partial<WebdavSyncConfig>): Prom
   await store.save()
 }
 
-async function getLibraryRoot(): Promise<string | null> {
-  try { const s = await getStore(); const val = await s.get('libraryRoot'); if (typeof val === 'string' && val) return val; return null } catch { return null }
-}
+// 统一通过 utils 获取当前库根目录（兼容 legacy）
 
 // 轻量 HTTP 客户端（优先使用 tauri plugin-http，回退到 fetch）
 async function getHttpClient(): Promise<{ fetch: any; ResponseType?: any; Body?: any } | null> {
@@ -609,7 +608,7 @@ export async function syncNow(reason: SyncReason): Promise<{ uploaded: number; d
       console.log('[WebDAV Sync] 同步未启用')
       return { uploaded: 0, downloaded: 0, skipped: true }
     }
-    const localRoot = await getLibraryRoot()
+    const localRoot = await getActiveLibraryRoot()
     if (!localRoot) {
       await syncLog('[skip] 未选择库目录')
       console.log('[WebDAV Sync] 未选择库目录')
@@ -618,7 +617,7 @@ export async function syncNow(reason: SyncReason): Promise<{ uploaded: number; d
       return { uploaded: 0, downloaded: 0, skipped: true }
     }
     updateStatus('正在同步… 准备中')
-    const auth = { username: cfg.username, password: cfg.password }; await syncLog('[prep] root=' + (await getLibraryRoot()) + ' remoteRoot=' + cfg.rootPath)
+    const auth = { username: cfg.username, password: cfg.password }; await syncLog('[prep] root=' + (await getActiveLibraryRoot()) + ' remoteRoot=' + cfg.rootPath)
     try { await ensureRemoteDir(cfg.baseUrl, auth, (cfg.rootPath || '').replace(/\/+$/, '')) } catch {}
 
     // 获取上次同步的元数据
@@ -1371,4 +1370,5 @@ async function ensureRemoteDir(baseUrl: string, auth: { username: string; passwo
     for (const p of parts) { cur += '/' + p; try { await mkcol(baseUrl, auth, cur) } catch {} }
   } catch {}
 }
+
 

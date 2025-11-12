@@ -102,6 +102,26 @@ function ensureCss() {
     '#ai-set-actions{display:flex;gap:10px;justify-content:flex-end;padding:10px 12px;border-top:1px solid #e5e7eb;background:#fafafa}',
     '#ai-set-actions button{padding:8px 12px;border-radius:10px;border:1px solid #e5e7eb;background:#ffffff;color:#0f172a}',
     '#ai-set-actions button.primary{background:#2563eb;border-color:#2563eb;color:#fff}',
+    // 暗黑模式样式
+    '#ai-head button{padding:6px 10px;border-radius:8px;border:1px solid #e5e7eb;background:#ffffff;color:#0f172a}',
+    '#ai-head button:hover{background:#f8fafc}',
+    '#ai-assist-win.dark{background:#0b1220;color:#e5e7eb;border-color:#1f2937}',
+    '#ai-assist-win.dark.dock-left{border-right-color:#1f2937}',
+    '#ai-assist-win.dark #ai-head{background:linear-gradient(180deg,#0f172a,#111827);border-bottom:1px solid #1f2937}',
+    '#ai-assist-win.dark #ai-title{color:#e5e7eb}',
+    '#ai-assist-win.dark #ai-toolbar{background:#0f172a;border-bottom:1px solid #1f2937}',
+    '#ai-assist-win.dark #ai-chat{background:#0b1220}',
+    '#ai-assist-win.dark .msg.u{background:#111827;border:1px solid #1f2937}',
+    '#ai-assist-win.dark .msg.a{background:#0f172a;border:1px solid #1f2937}',
+    '#ai-assist-win.dark #ai-input{background:#0f172a;border-top:1px solid #1f2937}',
+    '#ai-assist-win.dark #ai-input textarea{background:#0b1220;border:1px solid #1f2937;color:#e5e7eb}',
+    '#ai-assist-win.dark #ai-input button{background:#111827;color:#e5e7eb;border:1px solid #1f2937}',
+    '#ai-assist-win.dark #ai-input button:hover{background:#0f172a}',
+    '#ai-assist-win.dark #ai-toolbar .btn{background:#111827;color:#e5e7eb;border:1px solid #1f2937}',
+    '#ai-assist-win.dark #ai-toolbar .btn:hover{background:#0f172a}',
+    '#ai-assist-win.dark #ai-toolbar select,#ai-assist-win.dark #ai-toolbar input{background:#0b1220;border:1px solid #1f2937;color:#e5e7eb}',
+    '#ai-assist-win.dark #ai-head button{background:#111827;color:#e5e7eb;border:1px solid #1f2937}',
+    '#ai-assist-win.dark #ai-head button:hover{background:#0f172a}',
   ].join('\n')
   DOC().head.appendChild(css)
 }
@@ -429,7 +449,7 @@ async function mountWindow(context){
     '  <button id="ai-send">发送</button><button id="ai-apply-cursor">在光标处插入</button><button id="ai-apply-repl">替换选区</button><button id="ai-copy">复制</button>',
     ' </div></div>',
     '</div><div id="ai-vresizer" title="拖动调整宽度"></div><div id="ai-resizer" title="拖动调整尺寸"></div>'
-  , '#ai-head button{padding:6px 10px;border-radius:8px;border:1px solid #e5e7eb;background:#ffffff;color:#0f172a}','#ai-head button:hover{background:#f8fafc}','#ai-assist-win.dark{background:#0b1220;color:#e5e7eb;border-color:#1f2937}','#ai-assist-win.dark.dock-left{border-right-color:#1f2937}','#ai-assist-win.dark #ai-head{background:linear-gradient(180deg,#0f172a,#111827);border-bottom:1px solid #1f2937}','#ai-assist-win.dark #ai-title{color:#e5e7eb}','#ai-assist-win.dark #ai-toolbar{background:#0f172a;border-bottom:1px solid #1f2937}','#ai-assist-win.dark #ai-chat{background:#0b1220}','#ai-assist-win.dark .msg.u{background:#111827;border:1px solid #1f2937}','#ai-assist-win.dark .msg.a{background:#0f172a;border:1px solid #1f2937}','#ai-assist-win.dark #ai-input{background:#0f172a;border-top:1px solid #1f2937}','#ai-assist-win.dark #ai-input textarea{background:#0b1220;border:1px solid #1f2937;color:#e5e7eb}','#ai-assist-win.dark #ai-input button{background:#111827;color:#e5e7eb;border:1px solid #1f2937}','#ai-assist-win.dark #ai-input button:hover{background:#0f172a}','#ai-assist-win.dark #ai-toolbar .btn{background:#111827;color:#e5e7eb;border:1px solid #1f2937}','#ai-assist-win.dark #ai-toolbar .btn:hover{background:#0f172a}','#ai-assist-win.dark #ai-head button{background:#111827;color:#e5e7eb;border:1px solid #1f2937}','#ai-assist-win.dark #ai-head button:hover{background:#0f172a}',].join('')
+  ].join('')
   DOC().body.appendChild(el)
   if ((cfg && cfg.dock) !== false) setDockPush(true)
   // 绑定拖拽/调整

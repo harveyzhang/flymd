@@ -2000,3 +2000,9 @@ textarea:focus {
 }
 /* 保障标题栏总在侧栏之上，避免滚动时图标越界压住菜单 */
 .titlebar { position: relative; z-index: 20; }
+
+#find-replace-panel[data-mode="find-only"] #replace-text,
+#find-replace-panel[data-mode="find-only"] #btn-replace,
+#find-replace-panel[data-mode="find-only"] #btn-replace-all {
+  display: none;
+}

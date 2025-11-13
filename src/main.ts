@@ -5515,6 +5515,13 @@ function bindEvents() {
   let _replaceInput: HTMLInputElement | null = null
   let _findCase: HTMLInputElement | null = null
   let _lastFind = ''
+  let _findNextFn: ((fromCaret?: boolean) => void) | null = null
+  let _findPrevFn: (() => void) | null = null
+  function showFindPanelFindOnly() {
+    showFindPanel()
+    if (!_findPanel) return
+    try { (_findPanel as HTMLDivElement).dataset.mode = 'find-only' } catch {}
+  }
   // 所见/编辑：反引号序列状态（用于 ``` 代码围栏检测）
   let _btCount = 0
   let _btTimer: number | null = null
@@ -5537,9 +5544,9 @@ function bindEvents() {
     panel.style.border = '1px solid var(--border)'
     panel.style.boxShadow = '0 6px 16px rgba(0,0,0,0.15)'
     panel.style.borderRadius = '8px'
-    panel.style.padding = '10px 12px'
+    panel.style.padding = '8px 10px'
     panel.style.display = 'none'
-    panel.style.minWidth = '300px'
+    panel.style.minWidth = '260px'
     panel.innerHTML = `
       <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
         <input id="find-text" type="text" placeholder="查找... (Enter=下一个, Shift+Enter=上一个)" style="flex:1; padding:6px 8px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--fg);" />
@@ -5668,7 +5675,10 @@ function bindEvents() {
       }
     }
 
-    _findInput?.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); if (ev.shiftKey) findPrev(); else findNext() } })
+    _findNextFn = (fromCaret?: boolean) => { findNext(fromCaret) }
+    _findPrevFn = () => { findPrev() }
+
+    _findInput?.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); ev.stopPropagation(); if (ev.shiftKey) findPrev(); else findNext() } })
     btnPrev?.addEventListener('click', () => findPrev())
     btnNext?.addEventListener('click', () => findNext())
     btnRep?.addEventListener('click', () => replaceOne())
@@ -5678,6 +5688,7 @@ function bindEvents() {
   function showFindPanel() {
     ensureFindPanel()
     if (!_findPanel) return
+    try { delete (_findPanel as HTMLDivElement).dataset.mode } catch {}
     // 选区文本用作初始查找词
     try {
       let sel = ''
@@ -5692,6 +5703,12 @@ function bindEvents() {
   // 全局快捷键：Ctrl+H 打开查找替换
   document.addEventListener('keydown', (e: KeyboardEvent) => {
     try {
+      if (_findPanel && _findPanel.style.display !== 'none' && e.key === 'Enter') {
+        e.preventDefault()
+        if (e.shiftKey) { if (_findPrevFn) _findPrevFn() } else { if (_findNextFn) _findNextFn(true) }
+        return
+      }
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'f') { e.preventDefault(); showFindPanelFindOnly(); return }
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'h') { e.preventDefault(); showFindPanel(); return }
       if (e.key === 'Escape' && _findPanel && _findPanel.style.display !== 'none') { e.preventDefault(); _findPanel.style.display = 'none'; if (wysiwyg) { try { (document.querySelector('#md-wysiwyg-root .ProseMirror') as HTMLElement)?.focus() } catch {} } else { try { editor.focus() } catch {} } ; return }
     } catch {}

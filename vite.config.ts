@@ -26,9 +26,8 @@ export default defineConfig(({ mode }) => ({
   },
   // 生产构建：分包与剥离 console/debugger；开发：预打包重库
   esbuild: mode === 'production' ? {
-    // 临时启用 console 用于诊断 KaTeX 问题
-    // drop: ['console', 'debugger'],
-    drop: ['debugger'],
+    // 生产环境去掉 console/debugger，减小体积并避免多余日志
+    drop: ['console', 'debugger'],
     legalComments: 'none' // 移除许可注释，减小体积
   } : {},
   optimizeDeps: {

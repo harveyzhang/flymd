@@ -2,7 +2,7 @@
 
 [简体中文](ROADMAP.md) | [English](ROADMAP.en.md)
 
-## 更新 v0.2.9（即将发布）
+## 更新 v0.2.9
 - 新增 扩展插件开放pickDocFiles / openFileByPath / exportCurrentToPdf 接口以用于丰富扩展的功能
 - 改进 扩展插件市场新增一个备用地址，以为连接补上GitHub的地区提供扩展市场服务
 - 改进 扩展市场新增连接状态提示

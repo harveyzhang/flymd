@@ -2,6 +2,14 @@
 
 [简体中文](ROADMAP.md) | [English](ROADMAP.en.md)
 
+## Update v0.2.9
+- Added Exposed `pickDocFiles`, `openFileByPath`, and `exportCurrentToPdf` interfaces for extensions to enrich their functionalities.
+- Improved Added a fallback address to the extension marketplace to provide services for regions with GitHub connectivity issues.
+- Improved Added connection status prompts to the extension marketplace.
+---
+Extension Update
+Added Batch PDF Export Extension (Supported in v0.2.9)
+
 ## Update v0.2.8
 - Added: Update checking and hot-reload support for extension plugins.
 - Improved: Rendering logic of the extension marketplace.

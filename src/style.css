@@ -1373,29 +1373,287 @@ body > .block-menu { display: none !important; }
 
 /* === 全局滚动控制：去掉窗口级滚动，仅内部滚动 === */
 html, body { overflow: hidden; }
+
 /* 扩展管理弹窗 */
-.ext-overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.35); z-index: 80000; }
+.ext-overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,.5);
+  backdrop-filter: blur(4px);
+  z-index: 80000;
+  animation: ext-overlay-fadein 0.2s ease-out;
+}
 .ext-overlay.show { display: flex; }
-.ext-dialog { width: 720px; max-width: calc(100% - 40px); background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 36px rgba(0,0,0,.2); }
-.ext-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 14px; }
-.ext-close { border: none; background: transparent; color: var(--fg); cursor: pointer; font-size: 18px; line-height: 1; }
-.ext-body { padding: 12px 14px; max-height: 65vh; overflow: auto; }
-.ext-section { margin: 8px 0 14px 0; }
-.ext-subtitle { font-weight: 600; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
-.ext-install { display: flex; gap: 8px; }
-.ext-install input[type="text"] { flex: 1; padding: 8px 10px; border: 1px solid var(--border); background: var(--bg); color: var(--fg); border-radius: 8px; outline: none; font-size: 13px; min-width: 0; box-sizing: border-box; }
-.ext-install button { padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: rgba(127,127,127,0.08); color: var(--fg); cursor: pointer; }
-.ext-install button.primary { border-color: #2563eb; background: #2563eb; color: #fff; }
-.ext-list { display: grid; grid-template-columns: 1fr auto; gap: 8px 10px; }
-.ext-item { display: contents; }
-.ext-item .ext-meta { display: flex; flex-direction: column; gap: 2px; }
-.ext-item .ext-name { font-size: 13px; font-weight: 600; position: relative; padding-right: 30px; }
-.ext-item .ext-desc { font-size: 12px; color: var(--muted); }
-.ext-item .ext-actions { display: flex; align-items: center; gap: 6px; }
-.ext-actions .btn { padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: rgba(127,127,127,0.08); color: var(--fg); cursor: pointer; font-size: 12px; }
-.ext-actions .btn.primary { border-color: #2563eb; background: #2563eb; color: #fff; }
-.ext-actions .btn.warn { border-color: #ef4444; color: #ef4444; background: rgba(239,68,68,0.08); }
-.ext-empty { font-size: 12px; color: var(--muted); }
+
+@keyframes ext-overlay-fadein {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.ext-dialog {
+  width: 900px;
+  max-width: calc(100% - 40px);
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.3), 0 0 0 1px rgba(255,255,255,.1);
+  animation: ext-dialog-slidein 0.25s ease-out;
+  overflow: hidden;
+}
+
+@keyframes ext-dialog-slidein {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.ext-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 15px;
+  background: linear-gradient(to bottom, rgba(127,127,127,0.02), transparent);
+}
+
+.ext-close {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+.ext-close:hover {
+  background: rgba(127,127,127,0.1);
+  color: var(--fg);
+}
+
+.ext-body {
+  padding: 20px 24px 24px;
+  max-height: 75vh;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(127,127,127,0.3) transparent;
+}
+.ext-body::-webkit-scrollbar { width: 8px; }
+.ext-body::-webkit-scrollbar-track { background: transparent; }
+.ext-body::-webkit-scrollbar-thumb { background: rgba(127,127,127,0.3); border-radius: 4px; }
+.ext-body::-webkit-scrollbar-thumb:hover { background: rgba(127,127,127,0.5); }
+
+.ext-section {
+  margin: 0 0 24px 0;
+  padding: 16px;
+  background: rgba(127,127,127,0.03);
+  border-radius: 12px;
+  border: 1px solid rgba(127,127,127,0.08);
+}
+.ext-section:last-child { margin-bottom: 0; }
+
+.ext-subtitle {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--fg);
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.9;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ext-subtitle .btn {
+  margin-left: auto;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(127,127,127,0.08);
+  color: var(--fg);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  transition: all 0.2s ease;
+}
+.ext-subtitle .btn:hover:not(:disabled) {
+  background: rgba(127,127,127,0.15);
+  transform: translateY(-1px);
+}
+.ext-subtitle .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ext-install {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.ext-install input[type="text"] {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  border-radius: 10px;
+  outline: none;
+  font-size: 13px;
+  min-width: 0;
+  box-sizing: border-box;
+  transition: all 0.2s ease;
+}
+.ext-install input[type="text"]:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+}
+
+.ext-install button {
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(127,127,127,0.08);
+  color: var(--fg);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+.ext-install button:hover:not(:disabled) {
+  background: rgba(127,127,127,0.15);
+  transform: translateY(-1px);
+}
+.ext-install button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.ext-install button.primary {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
+}
+.ext-install button.primary:hover:not(:disabled) {
+  background: #1d4ed8;
+  box-shadow: 0 4px 12px rgba(37,99,235,0.3);
+}
+
+.ext-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ext-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  transition: all 0.2s ease;
+}
+.ext-item:hover {
+  border-color: rgba(127,127,127,0.3);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  transform: translateY(-1px);
+}
+
+.ext-item .ext-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ext-item .ext-name {
+  font-size: 14px;
+  font-weight: 600;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ext-item .ext-desc {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.ext-item .ext-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.ext-actions .btn {
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(127,127,127,0.08);
+  color: var(--fg);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+.ext-actions .btn:hover:not(:disabled) {
+  background: rgba(127,127,127,0.15);
+  transform: translateY(-1px);
+}
+.ext-actions .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.ext-actions .btn.primary {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
+}
+.ext-actions .btn.primary:hover:not(:disabled) {
+  background: #1d4ed8;
+  box-shadow: 0 2px 8px rgba(37,99,235,0.3);
+}
+.ext-actions .btn.warn {
+  border-color: #ef4444;
+  color: #ef4444;
+  background: rgba(239,68,68,0.08);
+}
+.ext-actions .btn.warn:hover:not(:disabled) {
+  background: rgba(239,68,68,0.15);
+  box-shadow: 0 2px 8px rgba(239,68,68,0.2);
+}
+
+.ext-empty {
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
+  padding: 20px;
+}
 
 /* 扩展市场加载提示样式 */
 .ext-loading {
@@ -1433,19 +1691,108 @@ html, body { overflow: hidden; }
   50% { opacity: 1; }
 }
 
-/* ��չ���µı�ʶ */
+/* 扩展标签样式 */
+.ext-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid currentColor;
+  opacity: 0.85;
+  transition: all 0.2s ease;
+}
+
+/* 扩展可更新的标识 */
 .ext-item .ext-update-badge {
-  position: absolute;
-  top: 0;
-  right: 0;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 6px;
   font-size: 10px;
+  font-weight: 600;
   line-height: 1.2;
-  padding: 1px 6px;
-  border-radius: 999px;
   border: 1px solid #f97316;
+  background: rgba(249,115,22,0.1);
   color: #f97316;
   text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transition: all 0.2s ease;
 }
+.ext-item .ext-update-badge:hover {
+  background: rgba(249,115,22,0.2);
+  transform: scale(1.05);
+}
+
+/* 推荐标识样式优化 */
+.ext-item .ext-name .ext-tag {
+  margin-left: 0;
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+/* 响应式设计 */
+@media (max-width: 640px) {
+  .ext-dialog {
+    width: 100%;
+    max-width: calc(100% - 20px);
+    border-radius: 12px;
+  }
+
+  .ext-header {
+    padding: 14px 16px;
+  }
+
+  .ext-body {
+    padding: 16px;
+  }
+
+  .ext-section {
+    padding: 12px;
+  }
+
+  .ext-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .ext-item .ext-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .ext-subtitle {
+    font-size: 12px;
+  }
+}
+
+/* 暗色模式优化 */
+@media (prefers-color-scheme: dark) {
+  .ext-overlay {
+    background: rgba(0,0,0,.65);
+  }
+
+  .ext-dialog {
+    box-shadow: 0 20px 60px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.05);
+  }
+
+  .ext-section {
+    background: rgba(127,127,127,0.05);
+    border-color: rgba(127,127,127,0.1);
+  }
+
+  .ext-item {
+    border-color: rgba(127,127,127,0.2);
+  }
+
+  .ext-item:hover {
+    border-color: rgba(127,127,127,0.4);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  }
+}
+
 /* 隐藏插件自建的头部条，避免重复顶栏按钮 */
 .tp-fly-headbar { display: none !important; }
 

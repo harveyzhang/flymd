@@ -7762,11 +7762,12 @@ async function refreshExtensionsUI(): Promise<void> {
   st2wrap.appendChild(list2)
   host.appendChild(st2wrap)
 
-  // 可安装的扩展（扩展市场）：先画标题和“正在加载”占位
+  // 可安装的扩展（扩展市场）：先画标题和"正在加载"占位
   const st3wrap = document.createElement('div'); st3wrap.className = 'ext-section'
-  const hd = document.createElement('div'); hd.className = 'ext-subtitle'; hd.textContent = t('ext.available')
+  const hd = document.createElement('div'); hd.className = 'ext-subtitle'
+  const hdText = document.createElement('span'); hdText.textContent = t('ext.available')
+  hd.appendChild(hdText)
   const btnRefresh = document.createElement('button'); btnRefresh.className = 'btn'; btnRefresh.textContent = t('ext.refresh')
-  btnRefresh.style.marginLeft = '8px'
   btnRefresh.addEventListener('click', async () => {
     try {
       (btnRefresh as HTMLButtonElement).disabled = true

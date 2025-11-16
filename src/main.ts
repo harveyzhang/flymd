@@ -5643,6 +5643,7 @@ function bindEvents() {
     panel.innerHTML = `
       <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
         <input id="find-text" type="text" placeholder="查找... (Enter=下一个, Shift+Enter=上一个)" style="flex:1; padding:6px 8px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--fg);" />
+        <span id="find-count" style="min-width:72px; text-align:right; font-size:12px; color:var(--muted); white-space:nowrap;"></span>
         <label title="区分大小写" style="display:flex; align-items:center; gap:4px; user-select:none;">
           <input id="find-case" type="checkbox" />Aa
         </label>
@@ -5669,6 +5670,7 @@ function bindEvents() {
     const btnRep = panel.querySelector('#btn-replace') as HTMLButtonElement
     const btnAll = panel.querySelector('#btn-replace-all') as HTMLButtonElement
     const btnClose = panel.querySelector('#btn-close-find') as HTMLButtonElement
+    const lblCount = panel.querySelector('#find-count') as HTMLSpanElement | null
 
     function norm(s: string) { return (_findCase?.checked ? s : s.toLowerCase()) }
     function getSel() { return { s: editor.selectionStart >>> 0, e: editor.selectionEnd >>> 0 } }
@@ -5690,6 +5692,38 @@ function bindEvents() {
       } catch {
         // 降级路径：至少确保选区被设置
         try { editor.selectionStart = s; editor.selectionEnd = e } catch {}
+      }
+    }
+
+    // 统计当前查询词在整个文档中的出现次数（基于 editor.value，适用于所有模式）
+    function countMatchesInEditor(termRaw: string): number {
+      const term = String(termRaw || '')
+      if (!term) return 0
+      const val = String(editor.value || '')
+      if (!val) return 0
+      const hay = norm(val)
+      const needle = norm(term)
+      if (!needle) return 0
+      let cnt = 0
+      let pos = 0
+      const step = Math.max(1, needle.length)
+      for (;;) {
+        const idx = hay.indexOf(needle, pos)
+        if (idx < 0) break
+        cnt++
+        pos = idx + step
+      }
+      return cnt
+    }
+    function updateFindCountLabel() {
+      if (!lblCount) return
+      const term = String(_findInput?.value || '')
+      if (!term) { lblCount.textContent = ''; return }
+      try {
+        const n = countMatchesInEditor(term)
+        lblCount.textContent = n > 0 ? `共 ${n} 处` : '未找到'
+      } catch {
+        try { lblCount.textContent = '' } catch {}
       }
     }
 
@@ -5769,6 +5803,7 @@ function bindEvents() {
     function findNext(fromCaret = true) {
       const term = String(_findInput?.value || '')
       if (!term) return
+      updateFindCountLabel()
 
       // 阅读模式：在预览区查找
       if (mode === 'preview' && !wysiwyg) {
@@ -5790,6 +5825,7 @@ function bindEvents() {
       // 上一个：严格在光标前搜索；未命中则循环到最后一个
       const term = String(_findInput?.value || '')
       if (!term) { if (wysiwyg) { try { (document.querySelector('#md-wysiwyg-root .ProseMirror') as HTMLElement)?.focus() } catch {} } else { try { editor.focus() } catch {} } ; return }
+      updateFindCountLabel()
 
       // 阅读模式：在预览区查找
       if (mode === 'preview' && !wysiwyg) {
@@ -5836,6 +5872,7 @@ function bindEvents() {
       setSel(pos, pos)
       dirty = true; refreshTitle(); refreshStatus(); if (mode === 'preview') { void renderPreview() } else if (wysiwyg) { scheduleWysiwygRender() }
       findNext(false)
+      updateFindCountLabel()
     }
     function replaceAll() {
       const term = String(_findInput?.value || '')
@@ -5882,11 +5919,14 @@ function bindEvents() {
         setSel(caret, caret)
         dirty = true; refreshTitle(); refreshStatus(); if (mode === 'preview') { void renderPreview() } else if (wysiwyg) { scheduleWysiwygRender() }
       }
+      updateFindCountLabel()
     }
 
     _findNextFn = (fromCaret?: boolean) => { findNext(fromCaret) }
     _findPrevFn = () => { findPrev() }
 
+    _findInput?.addEventListener('input', () => updateFindCountLabel())
+    _findCase?.addEventListener('change', () => updateFindCountLabel())
     _findInput?.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); ev.stopPropagation(); if (ev.shiftKey) findPrev(); else findNext() } })
     btnPrev?.addEventListener('click', () => findPrev())
     btnNext?.addEventListener('click', () => findNext())
@@ -5904,6 +5944,29 @@ function bindEvents() {
       if (wysiwyg) { sel = String(wysiwygV2GetSelectedText() || '') }
       else { sel = editor.value.slice(editor.selectionStart >>> 0, editor.selectionEnd >>> 0) }
       if (sel) { (_findInput as HTMLInputElement).value = sel; _lastFind = sel }
+    } catch {}
+    try {
+      const lbl = _findPanel.querySelector('#find-count') as HTMLSpanElement | null
+      if (lbl) {
+        const term = String((_findInput as HTMLInputElement)?.value || '')
+        if (!term) { lbl.textContent = '' }
+        else {
+          const val = String(editor.value || '')
+          const hay = ((_findCase as HTMLInputElement | null)?.checked ? val : val.toLowerCase())
+          const needle = ((_findCase as HTMLInputElement | null)?.checked ? term : term.toLowerCase())
+          if (!needle) lbl.textContent = ''
+          else {
+            let cnt = 0, pos = 0
+            const step = Math.max(1, needle.length)
+            for (;;) {
+              const idx = hay.indexOf(needle, pos)
+              if (idx < 0) break
+              cnt++; pos = idx + step
+            }
+            lbl.textContent = cnt > 0 ? `共 ${cnt} 处` : '未找到'
+          }
+        }
+      }
     } catch {}
     _findPanel.style.display = 'block'
     setTimeout(() => { try { (_findInput as HTMLInputElement).focus(); (_findInput as HTMLInputElement).select() } catch {} }, 0)

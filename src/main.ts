@@ -4239,8 +4239,10 @@ function renderOutlinePanel() {
             ta.selectionEnd = caret
             try { ta.focus() } catch {}
             if (len > 0 && ta.scrollHeight > ta.clientHeight + 4) {
-              const ratio = caret / len
-              const targetY = ratio * ta.scrollHeight
+              const linesBefore = text.slice(0, caret).split('\n').length
+              const totalLines = text.split('\n').length
+              const lineRatio = (linesBefore - 1) / Math.max(1, totalLines - 1)
+              const targetY = lineRatio * ta.scrollHeight
               ta.scrollTop = Math.max(0, targetY - ta.clientHeight * 0.3)
             }
           } catch {}

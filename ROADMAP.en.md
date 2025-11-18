@@ -2,6 +2,14 @@
 
 [简体中文](ROADMAP.md) | [English](ROADMAP.en.md)
 
+## Update v0.3.4
+- Improved: Optimized WebDAV sync strategy with new sync options and more robust handling when documents are deleted, moved, or renamed.
+- Added: Custom library icons support, along with refreshed folder/library icon styles.
+- Improved: Added an optional grid background for Edit mode and refined sidebar copy/layout to better fit multi-library scenarios.
+- Improved: Smoother new-document flow so creating and entering the editor feels more seamless.
+- Fixed: Rename dialog not refreshing when switching between Chinese and English, and completed the English version of the context menu.
+- Improved: Simplified the hit-count display for Find / Find & Replace to keep focus on the most important numbers.
+
 ## Update v0.3.3
 - Fixed: Manual WebDAV sync no longer gets skipped when the local tree appears unchanged, avoiding missed remote updates.
 - Improved: Switching between Edit / Reading / WYSIWYG modes now preserves the scroll position so toggling modes no longer jumps around.

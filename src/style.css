@@ -452,7 +452,7 @@ body > .block-menu { display: none !important; }
   word-break: break-word;
   color: var(--fg);
   /* 居中与阅读宽度（对齐预览的 preview-body） */
-  max-width: 860px;
+  max-width: var(--preview-max-width, 860px);
   margin: 0 auto;
   background: transparent;
   box-sizing: border-box;
@@ -713,7 +713,7 @@ body > .block-menu { display: none !important; }
 
 /* 预览正文容器：定宽居中，类似 Typora/Word 的阅读宽度 */
 .preview-body {
-  max-width: 860px;   /* 与所见模式一致 */
+  max-width: var(--preview-max-width, 860px);   /* 与所见模式一致 */
   margin: 0 auto;
   padding: 14px 16px 20px 16px; /* 与所见模式保持一致 */
   /* 添加过渡动画，配合侧栏展开 */
@@ -1050,6 +1050,17 @@ body > .block-menu { display: none !important; }
 
 .zoom-bubble .zoom-reset-btn:active {
   transform: scale(0.95);
+}
+
+/* 阅读宽度气泡：靠近状态栏右侧显示 */
+.width-bubble {
+  left: auto;
+  right: 24px;
+  bottom: 56px;
+  transform: translateY(0) scale(1);
+}
+.width-bubble.hidden {
+  transform: translateY(8px) scale(0.95);
 }
 
 /* Markdown 基础排版（预览） */

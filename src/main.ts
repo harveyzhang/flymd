@@ -61,6 +61,13 @@ const UI_ZOOM_MIN = 0.6
 const UI_ZOOM_MAX = 2.0
 const UI_ZOOM_STEP = 0.1
 
+// 阅读/所见宽度（Shift + 滚轮）控制
+const PREVIEW_WIDTH_KEY = 'flymd:previewWidth'
+const PREVIEW_WIDTH_DEFAULT = 860
+const PREVIEW_WIDTH_MIN = 600
+const PREVIEW_WIDTH_MAX = 1600
+const PREVIEW_WIDTH_STEP = 40
+
 function getUiZoom(): number {
   try {
     const v = localStorage.getItem(UI_ZOOM_KEY)
@@ -71,6 +78,32 @@ function getUiZoom(): number {
 }
 function saveUiZoom(z: number): void { try { localStorage.setItem(UI_ZOOM_KEY, String(z)) } catch {} }
 function clamp(n: number, a: number, b: number): number { return Math.max(a, Math.min(b, n)) }
+
+function getPreviewWidth(): number {
+  try {
+    const v = localStorage.getItem(PREVIEW_WIDTH_KEY)
+    const n = v ? parseFloat(v) : NaN
+    if (Number.isFinite(n) && n >= PREVIEW_WIDTH_MIN && n <= PREVIEW_WIDTH_MAX) return n
+  } catch {}
+  return PREVIEW_WIDTH_DEFAULT
+}
+function savePreviewWidth(w: number): void { try { localStorage.setItem(PREVIEW_WIDTH_KEY, String(w)) } catch {} }
+function applyPreviewWidth(): void {
+  try {
+    const w = getPreviewWidth()
+    const root = document.documentElement as HTMLElement | null
+    if (root) root.style.setProperty('--preview-max-width', String(Math.round(w)) + 'px')
+  } catch {}
+}
+function setPreviewWidth(next: number): void {
+  const w = clamp(Math.round(next), PREVIEW_WIDTH_MIN, PREVIEW_WIDTH_MAX)
+  savePreviewWidth(w)
+  applyPreviewWidth()
+}
+function resetPreviewWidth(): void {
+  setPreviewWidth(PREVIEW_WIDTH_DEFAULT)
+}
+
 function applyUiZoom(): void {
   try {
     const scale = getUiZoom()
@@ -1843,11 +1876,25 @@ const containerEl = document.querySelector('.container') as HTMLDivElement
 try {
   const wheelZoom = (e: WheelEvent) => {
     try {
+      const dy = e.deltaY || 0
+      // Ctrl/Cmd + 滚轮：优先处理，避免与其他组合键冲突
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault()
-        const dy = e.deltaY || 0
         if (dy < 0) zoomIn(); else if (dy > 0) zoomOut()
         showZoomBubble()
+        return
+      }
+      // Shift + 滚轮：调整阅读/所见最大宽度
+      if (e.shiftKey && !e.ctrlKey && !e.metaKey) {
+        // 仅在阅读/所见模式下响应，编辑模式下保持默认滚动行为
+        if (mode !== 'preview' && !wysiwyg && !wysiwygV2Active) return
+        if (!dy) return
+        e.preventDefault()
+        const cur = getPreviewWidth()
+        const delta = dy < 0 ? PREVIEW_WIDTH_STEP : -PREVIEW_WIDTH_STEP
+        setPreviewWidth(cur + delta)
+        showWidthBubble()
+        return
       }
     } catch {}
   }
@@ -1862,6 +1909,8 @@ try {
 
 // 初始化应用缩放：读取已保存缩放并应用到编辑/预览/WYSIWYG
 try { applyUiZoom() } catch {}
+// 初始化阅读/所见宽度：读取已保存宽度并应用到预览/所见容器
+try { applyPreviewWidth() } catch {}
 
 // ===== Mermaid 缩放（全局 API + 工具条复用）=====
 function setMermaidScaleClamped(next: number): void {
@@ -1900,10 +1949,45 @@ function showZoomBubble(): void {
     el.classList.remove('hidden')
     el.classList.add('show')
     if (_zoomBubbleTimer != null) { window.clearTimeout(_zoomBubbleTimer); _zoomBubbleTimer = null }
-    _zoomBubbleTimer = window.setTimeout(() => {
+      _zoomBubbleTimer = window.setTimeout(() => {
       try { el!.classList.remove('show'); el!.classList.add('hidden') } catch {}
       _zoomBubbleTimer = null
     }, 1000)
+  } catch {}
+}
+
+// 阅读宽度气泡：Shift+滚轮调整时提示并提供重置按钮
+let _widthBubbleTimer: number | null = null
+function ensureWidthBubble(): HTMLDivElement | null {
+  try {
+    let el = document.getElementById('width-bubble') as HTMLDivElement | null
+    if (!el) {
+      el = document.createElement('div')
+      el.id = 'width-bubble'
+      el.className = 'zoom-bubble width-bubble hidden'
+      el.innerHTML = `
+        <span id="width-bubble-label">860px</span>
+        <button id="width-bubble-reset" class="zoom-reset-btn" title="重置阅读宽度" aria-label="重置阅读宽度">重置</button>
+      `
+      document.body.appendChild(el)
+      const btn = el.querySelector('#width-bubble-reset') as HTMLButtonElement | null
+      if (btn) btn.addEventListener('click', () => { try { resetPreviewWidth(); showWidthBubble() } catch {} })
+    }
+    return el
+  } catch { return null }
+}
+function showWidthBubble(): void {
+  try {
+    const el = ensureWidthBubble(); if (!el) return
+    const label = el.querySelector('#width-bubble-label') as HTMLSpanElement | null
+    if (label) label.textContent = Math.round(getPreviewWidth()) + 'px'
+    el.classList.remove('hidden')
+    el.classList.add('show')
+    if (_widthBubbleTimer != null) { window.clearTimeout(_widthBubbleTimer); _widthBubbleTimer = null }
+    _widthBubbleTimer = window.setTimeout(() => {
+      try { el!.classList.remove('show'); el!.classList.add('hidden') } catch {}
+      _widthBubbleTimer = null
+    }, 2000)
   } catch {}
 }
 let _wheelHandlerRef: ((e: WheelEvent)=>void) | null = null

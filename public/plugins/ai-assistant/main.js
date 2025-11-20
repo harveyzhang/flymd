@@ -27,6 +27,7 @@ let __AI_SENDING__ = false
 let __AI_LAST_REPLY__ = ''
 let __AI_TOGGLE_LOCK__ = false
 let __AI_MQ_BOUND__ = false
+let __AI_MENU_ITEM__ = null // 保存菜单项引用，用于卸载时清理
 
 // ========== 工具函数 ==========
 async function loadCfg(context) {
@@ -907,13 +908,41 @@ export async function openSettings(context){
 // ========== 插件主入口 ==========
 export async function activate(context) {
   // 菜单：AI 助手（显示/隐藏）
-  context.addMenuItem({ label: 'AI 助手', title: '打开 AI 写作助手', onClick: async () => { await toggleWindow(context) } })
+  __AI_MENU_ITEM__ = context.addMenuItem({ label: 'AI 助手', title: '打开 AI 写作助手', onClick: async () => { await toggleWindow(context) } })
   // 预加载配置与会话
   try { const cfg = await loadCfg(context); await saveCfg(context, cfg) } catch {}
   try { __AI_SESSION__ = await loadSession(context) } catch {}
 }
 
-export function deactivate(){ /* 无状态清理需求 */ }
+export function deactivate(){
+  // 清理菜单项
+  try {
+    if (__AI_MENU_ITEM__ && typeof __AI_MENU_ITEM__.remove === 'function') {
+      __AI_MENU_ITEM__.remove()
+    }
+  } catch {}
+  // 清理窗口
+  try {
+    const win = DOC().getElementById('ai-assist-win')
+    if (win) {
+      setDockPush(false) // 恢复编辑区域
+      win.remove()
+    }
+  } catch {}
+  // 清理样式
+  try {
+    const style = DOC().getElementById('ai-assist-style')
+    if (style) style.remove()
+  } catch {}
+  // 重置全局状态
+  __AI_MENU_ITEM__ = null
+  __AI_SESSION__ = { id: '', name: '默认会话', messages: [], docHash: '', docTitle: '' }
+  __AI_DB__ = null
+  __AI_SENDING__ = false
+  __AI_LAST_REPLY__ = ''
+  __AI_TOGGLE_LOCK__ = false
+  __AI_MQ_BOUND__ = false
+}
 
 // 独立窗口入口：直接挂载 AI 浮窗
 export async function standalone(context){

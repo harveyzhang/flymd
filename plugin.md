@@ -64,6 +64,7 @@ my-plugin/
 - `author`（可选）：作者信息
 - `description`（可选）：插件功能描述
 - `main`（必需）：插件入口文件，默认为 `main.js`
+- `minHostVersion`（可选）：插件要求的 flyMD 最低版本号。如果用户的 flyMD 版本低于此版本，将拒绝安装并提示用户升级
 
 ### 3. 编写 main.js
 
@@ -133,9 +134,30 @@ my-plugin/
   "author": "Your Name <email@example.com>",
   "description": "这是一个示例插件，展示如何开发 flyMD 扩展",
   "main": "main.js",
+  "minHostVersion": "0.3.0",
   "homepage": "https://github.com/username/example-plugin",
   "repository": "https://github.com/username/example-plugin"
 }
+```
+
+**版本兼容性示例：**
+
+如果你的插件使用了 flyMD 0.3.5 版本才引入的新 API，你可以这样设置：
+
+```json
+{
+  "id": "my-advanced-plugin",
+  "name": "高级功能插件",
+  "version": "2.0.0",
+  "minHostVersion": "0.3.5",
+  "description": "此插件需要 flyMD 0.3.5 或更高版本"
+}
+```
+
+当用户尝试在 flyMD 0.3.4 或更低版本上安装此插件时，会收到错误提示：
+```
+此扩展需要 flyMD 0.3.5 或更高版本，当前版本为 0.3.4。
+请先升级 flyMD 再安装此扩展。
 ```
 
 ## 插件API

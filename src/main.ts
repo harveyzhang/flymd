@@ -691,7 +691,7 @@ let _lastPasteCombo: 'normal' | 'plain' | null = null
 // 配置存储（使用 tauri store）
 let store: Store | null = null
 // 插件管理（简单实现）
-type PluginManifest = { id: string; name?: string; version?: string; author?: string; description?: string; main?: string }
+type PluginManifest = { id: string; name?: string; version?: string; author?: string; description?: string; main?: string; minHostVersion?: string }
 type InstalledPlugin = { id: string; name?: string; version?: string; enabled?: boolean; dir: string; main: string; builtin?: boolean; description?: string; manifestUrl?: string }
 
 // 右键菜单相关类型
@@ -8544,6 +8544,19 @@ async function installPluginFromGit(inputRaw: string, opt?: { enabled?: boolean 
   let manifest: PluginManifest
   try { manifest = JSON.parse(manifestText) as PluginManifest } catch { throw new Error('manifest.json 解析失败') }
   if (!manifest?.id) throw new Error('manifest.json 缺少 id')
+
+  // 检查宿主版本兼容性
+  if (manifest.minHostVersion) {
+    const currentVersion = APP_VERSION
+    const requiredVersion = manifest.minHostVersion
+    if (compareVersions(currentVersion, requiredVersion) < 0) {
+      throw new Error(
+        `此扩展需要 flyMD ${requiredVersion} 或更高版本，当前版本为 ${currentVersion}。\n` +
+        `请先升级 flyMD 再安装此扩展。`
+      )
+    }
+  }
+
   const mainRel = (manifest.main || 'main.js').replace(/^\/+/, '')
   const mainUrl = parsed.manifestUrl.replace(/manifest\.json$/i, '') + mainRel
   const mainCode = await fetchTextSmart(mainUrl)

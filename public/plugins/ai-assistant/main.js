@@ -536,7 +536,7 @@ async function mountWindow(context){
     '  <label class="small">会话</label> <select id="ai-sel-session" style="max-width:180px"></select>',
     '  <button class="btn" id="ai-s-new" title="新建会话">新建</button>',
     '  <button class="btn" id="ai-s-del" title="删除当前会话">删除</button>',
-    '  <button class="btn" id="q-continue">续写</button><button class="btn" id="q-polish">润色</button><button class="btn" id="q-proof">纠错</button><button class="btn" id="q-outline">提纲</button><button class="btn" id="ai-clear" title="清空本篇会话">清空</button>',
+    '  <button class="btn" id="q-continue">续写</button><button class="btn" id="q-polish">润色</button><button class="btn" id="q-proof">纠错</button><button class="btn" id="q-outline">提纲</button><button class="btn" id="q-todos" title="分析文章生成待办事项">待办</button><button class="btn" id="ai-clear" title="清空本篇会话">清空</button>',
     ' </div>',
     ' <div id="ai-chat"></div>',
     ' <div id="ai-input"><textarea id="ai-text" placeholder="输入与 AI 对话…"></textarea><div class="btn-group">',
@@ -577,6 +577,7 @@ async function mountWindow(context){
   el.querySelector('#q-polish').addEventListener('click',()=>{ quick(context,'润色') })
   el.querySelector('#q-proof').addEventListener('click',()=>{ quick(context,'纠错') })
   el.querySelector('#q-outline').addEventListener('click',()=>{ quick(context,'提纲') })
+  el.querySelector('#q-todos').addEventListener('click',()=>{ generateTodos(context) })
   el.__mounted = true
   // 头部双击：大小切换（小↔大）
   try {
@@ -700,6 +701,113 @@ async function quick(context, kind){
   const prefix = buildPromptPrefix(kind)
   inp.value = prefix
   await sendFromInput(context)
+}
+
+async function generateTodos(context){
+  const GENERATING_MARKER = '[正在生成待办]\n\n'
+  try {
+    const cfg = await loadCfg(context)
+    if (!cfg.apiKey) {
+      context.ui.notice('请先在"设置"中配置 API Key', 'err', 3000)
+      return
+    }
+    if (!cfg.model) {
+      context.ui.notice('请先选择模型', 'err', 2000)
+      return
+    }
+
+    // 获取文档内容
+    const content = String(context.getEditorValue() || '').trim()
+    if (!content) {
+      context.ui.notice('文档内容为空', 'err', 2000)
+      return
+    }
+
+    // 在文档顶部显示生成提示
+    context.setEditorValue(GENERATING_MARKER + content)
+    context.ui.notice('正在分析文章生成待办事项...', 'ok', 999999)
+
+    // 构造提示词
+    const system = '你是专业的任务管理助手。基于用户提供的文章内容，提取其中的可执行任务，并生成待办事项列表。'
+    const prompt = `请仔细阅读以下文章内容，提取其中提到的或隐含的可执行任务，生成待办事项列表。
+
+文章内容：
+${content.length > 4000 ? content.slice(0, 4000) + '...' : content}
+
+要求：
+1. 每个待办事项必须是明确的、可执行的任务
+2. 格式严格遵守：- [ ] 任务描述 @时间
+3. 时间格式使用以下之一：
+   - @YYYY-MM-DD HH:mm （如 @2025-01-21 14:00）
+   - @明天 14:00
+   - @后天 上午
+   - @今天 晚上8点
+4. 根据任务的紧急程度和文章内容合理安排时间
+5. 只输出待办事项列表，每行一个，不要其他说明文字
+6. 如果文章中没有明确的任务，可以根据文章主题提取3-5个相关的行动项
+
+示例输出：
+- [ ] 完成项目文档撰写 @2025-01-22 10:00
+- [ ] 审阅代码并提交反馈 @明天 下午3点
+- [ ] 整理会议纪要 @今天 晚上`
+
+    const url = (cfg.baseUrl||'https://api.openai.com/v1').replace(/\/$/, '') + '/chat/completions'
+    const headers = { 'Content-Type':'application/json', 'Authorization': 'Bearer ' + cfg.apiKey }
+    const body = JSON.stringify({
+      model: cfg.model,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: prompt }
+      ],
+      stream: false
+    })
+
+    const response = await fetch(url, { method: 'POST', headers, body })
+    if (!response.ok) {
+      throw new Error('API 调用失败：' + response.status)
+    }
+
+    const data = await response.json()
+    const todos = String(data?.choices?.[0]?.message?.content || '').trim()
+
+    if (!todos) {
+      // 恢复原内容（删除生成提示）
+      context.setEditorValue(content)
+      context.ui.notice('AI 未能生成待办事项', 'err', 3000)
+      return
+    }
+
+    // 提取有效的待办事项行（以 - [ ] 开头）
+    const lines = todos.split('\n')
+    const validTodos = lines.filter(line => {
+      const trimmed = line.trim()
+      return trimmed.startsWith('- [ ]') || trimmed.startsWith('- [x]')
+    })
+
+    if (validTodos.length === 0) {
+      // 恢复原内容（删除生成提示）
+      context.setEditorValue(content)
+      context.ui.notice('未能提取有效的待办事项格式', 'err', 3000)
+      return
+    }
+
+    // 插入到文档开头（替换生成提示）
+    const todoSection = validTodos.join('\n') + '\n\n'
+    const newContent = todoSection + content
+    context.setEditorValue(newContent)
+
+    context.ui.notice(`成功生成 ${validTodos.length} 条待办事项`, 'ok', 2500)
+  } catch (error) {
+    console.error('生成待办事项失败：', error)
+    // 恢复原内容（删除生成提示）
+    try {
+      const currentContent = String(context.getEditorValue() || '')
+      if (currentContent.startsWith(GENERATING_MARKER)) {
+        context.setEditorValue(currentContent.replace(GENERATING_MARKER, ''))
+      }
+    } catch {}
+    context.ui.notice('生成待办事项失败：' + (error?.message || '未知错误'), 'err', 4000)
+  }
 }
 
 async function sendFromInput(context){
@@ -960,6 +1068,13 @@ export async function activate(context) {
               el('ai-assist-win').style.display = 'block'
               setDockPush(true)
               await quick(context, '提纲')
+            }
+          },
+          {
+            label: '待办',
+            icon: '📝',
+            onClick: async () => {
+              await generateTodos(context)
             }
           },
           { type: 'divider' },

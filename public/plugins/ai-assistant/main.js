@@ -28,6 +28,7 @@ let __AI_LAST_REPLY__ = ''
 let __AI_TOGGLE_LOCK__ = false
 let __AI_MQ_BOUND__ = false
 let __AI_MENU_ITEM__ = null // 保存菜单项引用，用于卸载时清理
+let __AI_CTX_MENU_DISPOSER__ = null // 保存右键菜单清理函数
 
 // ========== 工具函数 ==========
 async function loadCfg(context) {
@@ -913,7 +914,7 @@ export async function activate(context) {
   // 右键菜单：AI 助手快捷操作
   if (context.addContextMenuItem) {
     try {
-      context.addContextMenuItem({
+      __AI_CTX_MENU_DISPOSER__ = context.addContextMenuItem({
         label: 'AI 助手',
         icon: '🤖',
         children: [
@@ -984,8 +985,14 @@ export async function activate(context) {
 export function deactivate(){
   // 清理菜单项
   try {
-    if (__AI_MENU_ITEM__ && typeof __AI_MENU_ITEM__.remove === 'function') {
-      __AI_MENU_ITEM__.remove()
+    if (__AI_MENU_ITEM__ && typeof __AI_MENU_ITEM__ === 'function') {
+      __AI_MENU_ITEM__()
+    }
+  } catch {}
+  // 清理右键菜单
+  try {
+    if (__AI_CTX_MENU_DISPOSER__ && typeof __AI_CTX_MENU_DISPOSER__ === 'function') {
+      __AI_CTX_MENU_DISPOSER__()
     }
   } catch {}
   // 清理窗口
@@ -1003,6 +1010,7 @@ export function deactivate(){
   } catch {}
   // 重置全局状态
   __AI_MENU_ITEM__ = null
+  __AI_CTX_MENU_DISPOSER__ = null
   __AI_SESSION__ = { id: '', name: '默认会话', messages: [], docHash: '', docTitle: '' }
   __AI_DB__ = null
   __AI_SENDING__ = false

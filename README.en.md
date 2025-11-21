@@ -28,6 +28,34 @@ A cross-platform WYSIWYG Markdown editor and PDF reader with image hosting, WebD
 - AI Assistant: Install from the Extensions market to polish, correct and summarize content
 - Export formats: Export to PDF, DOCX, WPS
 - Todo Reminder Extension: Install from the Extensions market to push unfinished TODOs at scheduled times via WeChat, SMS, or email to designated recipients
+
+## 🎯 AI + Todo Integration: Your Intelligent Life Assistant
+
+**This isn't cyberpunk—this is real life.** When AI Assistant meets Todo Plugin, your notebook transforms into an intelligent life manager.
+
+### Powerful Scenarios
+
+#### 📅 Personal Habit Building
+- **Scenario**: You write in your notes: "I've been having trouble waking up lately. I must get up at 6 AM tomorrow."
+- **Smart Response**: At 6 AM the next day, AI recognizes your need and calls you via the Todo plugin ☎️
+
+#### 🗺️ Travel Itinerary Execution
+- **Scenario**: Copy a travel guide from social media and paste it into your notes
+- **Smart Response**: AI automatically extracts time points from the itinerary and sends you WeChat messages at appropriate times: "Time to visit the next spot!" 📍
+
+#### 💼 Team Meeting Management
+- **Scenario**: As a manager, you record this week's meeting schedule in your notes
+- **Smart Response**: Your team members receive meeting reminders via DingTalk, email, or WeChat at the right time—never miss a meeting 📧
+
+### How It Works
+
+1. **AI Smart Analysis**: AI Assistant automatically analyzes your note content, extracting key information like time, events, and people
+2. **Auto-Create Todos**: Based on analysis results, intelligently creates todo items
+3. **Multi-Channel Push**: Sends reminders via WeChat, SMS, email, phone calls, etc., at the right time
+4. **Contextualized Experience**: Not a cold tool, but a life assistant that understands you
+
+> 💡 **Tip**: Install both "AI Assistant" and "Todo Reminder" extensions from the Extensions market to experience this powerful feature.
+
 ## 📸 Interface Preview (v0.2.2)
 <p align="center">
   <img src="https://github.com/user-attachments/assets/661c3263-d877-4fcf-a77f-69096b42b9d5" width="32%" alt="Markdown Editor Screenshot 1"/>

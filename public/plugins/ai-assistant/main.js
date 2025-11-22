@@ -727,6 +727,7 @@ function buildPromptPrefix(kind){
     case '润色': return '基于文档上下文，润色并提升表达的清晰度与逻辑性，仅输出修改后的结果。'
     case '纠错': return '基于文档上下文，找出并修正错别字、语法问题，仅输出修订后的结果。'
     case '提纲': return '阅读文档上下文，输出一份结构化提纲（分级列表）。'
+    case '翻译': return '将以下内容翻译成中文，保持原文格式和结构，译文要自然流畅、符合中文表达习惯。只输出翻译结果，不要添加任何解释。'
     default: return ''
   }
 }
@@ -736,6 +737,101 @@ async function quick(context, kind){
   const prefix = buildPromptPrefix(kind)
   inp.value = prefix
   await sendFromInput(context)
+}
+
+// 翻译功能：检测选中文本或整篇文档进行翻译
+async function translateText(context) {
+  try {
+    const cfg = await loadCfg(context)
+    const isFree = isFreeProvider(cfg)
+    if (!cfg.apiKey && !isFree) {
+      context.ui.notice('请先在"设置"中配置 API Key', 'err', 3000)
+      return
+    }
+
+    // 检测是否有选中文本
+    let textToTranslate = ''
+    let hasSelection = false
+    let selectionInfo = null
+
+    try {
+      selectionInfo = await context.getSelection?.()
+      if (selectionInfo && selectionInfo.text && selectionInfo.text.trim()) {
+        textToTranslate = selectionInfo.text.trim()
+        hasSelection = true
+      }
+    } catch {}
+
+    // 如果没有选中文本，翻译整篇文档
+    if (!hasSelection) {
+      textToTranslate = String(context.getEditorValue() || '').trim()
+    }
+
+    if (!textToTranslate) {
+      context.ui.notice('没有可翻译的内容', 'err', 2000)
+      return
+    }
+
+    context.ui.notice('正在翻译...', 'ok', 999999)
+
+    // 构造翻译请求
+    const system = '你是专业的翻译助手。'
+    const prompt = buildPromptPrefix('翻译') + '\n\n' + textToTranslate
+
+    const url = buildApiUrl(cfg)
+    const headers = buildApiHeaders(cfg)
+    const body = JSON.stringify({
+      model: cfg.model,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: prompt }
+      ],
+      stream: false
+    })
+
+    const response = await fetch(url, { method: 'POST', headers, body })
+    if (!response.ok) {
+      throw new Error('API 调用失败：' + response.status)
+    }
+
+    const data = await response.json()
+    const translation = String(data?.choices?.[0]?.message?.content || '').trim()
+
+    if (!translation) {
+      context.ui.notice('翻译失败：未获取到结果', 'err', 3000)
+      return
+    }
+
+    // 格式化并插入翻译结果
+    const currentContent = String(context.getEditorValue() || '')
+
+    if (hasSelection) {
+      // 选中文本翻译：在选中位置后插入翻译（引用格式）
+      const translationBlock = '\n\n> 📝 **翻译**\n> \n' + translation.split('\n').map(line => '> ' + line).join('\n') + '\n'
+
+      try {
+        // 在选区末尾插入
+        if (selectionInfo && typeof selectionInfo.end === 'number') {
+          await context.replaceRange(selectionInfo.end, selectionInfo.end, translationBlock)
+        } else {
+          // 降级：插入到光标位置
+          await context.insertAtCursor(translationBlock)
+        }
+      } catch {
+        // 再降级：追加到文档末尾
+        context.setEditorValue(currentContent + translationBlock)
+      }
+      context.ui.notice('翻译完成', 'ok', 1600)
+    } else {
+      // 整篇文档翻译：追加到文档末尾
+      const translationSection = '\n\n---\n\n## 📝 中文翻译\n\n' + translation + '\n'
+      context.setEditorValue(currentContent + translationSection)
+      context.ui.notice('整篇文档翻译完成', 'ok', 1600)
+    }
+  } catch (error) {
+    console.error('翻译失败：', error)
+    context.ui.notice('翻译失败：' + (error?.message || '未知错误'), 'err', 4000)
+  }
 }
 
   async function generateTodosAndPush(context) {
@@ -1332,6 +1428,13 @@ export async function activate(context) {
                 }
               }
             ]
+          },
+          {
+            label: '翻译',
+            icon: '🌐',
+            onClick: async () => {
+              await translateText(context)
+            }
           },
           { type: 'divider' },
           {

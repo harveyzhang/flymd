@@ -669,6 +669,10 @@ let selectedNodeEl: HTMLElement | null = null
 let libraryDocked = true
 // 非固定模式下：离开侧栏后自动隐藏的延迟定时器
 let _libLeaveTimer: number | null = null
+// 专注模式：隐藏顶栏，鼠标移到顶部边缘时显示
+let focusMode = false
+let _focusTitlebarShowTimer: number | null = null
+let _focusTitlebarHideTimer: number | null = null
 // 左侧“边缘唤醒”热区元素（非固定且隐藏时显示，鼠标靠近自动展开库）
 let _libEdgeEl: HTMLDivElement | null = null
 function selectLibraryNode(el: HTMLElement | null, path: string | null, isDir: boolean) {
@@ -1590,6 +1594,7 @@ app.innerHTML = `
     </div>
     <div class="filename" id="filename">${t('filename.untitled')}</div>
   </div>
+  <div class="focus-trigger-zone" id="focus-trigger-zone"></div>
   <div class="container">
     <textarea id="editor" class="editor" spellcheck="false" placeholder="${t('editor.placeholder')}"></textarea>
     <div id="preview" class="preview hidden"></div>
@@ -1608,6 +1613,9 @@ initPlatformIntegration().catch((e) => console.error('[Platform] Initialization 
 // 应用已保存主题并挂载主题 UI
 try { applySavedTheme() } catch {}
 try { initThemeUI() } catch {}
+// 初始化专注模式事件
+try { initFocusModeEvents() } catch {}
+// 恢复专注模式状态（需要等 store 初始化后执行，见下方 store 初始化处）
 
 const editor = document.getElementById('editor') as HTMLTextAreaElement
 const preview = document.getElementById('preview') as HTMLDivElement
@@ -5534,6 +5542,77 @@ async function getLibraryDocked(): Promise<boolean> {
   try { if (!store) return libraryDocked; const v = await store.get('libraryDocked'); return !!v } catch { return libraryDocked }
 }
 
+// ========== 专注模式（Focus Mode）==========
+// 隐藏顶栏，鼠标移到顶部边缘时自动显示
+
+async function toggleFocusMode(enabled?: boolean) {
+  focusMode = enabled !== undefined ? enabled : !focusMode
+  document.body.classList.toggle('focus-mode', focusMode)
+  // 保存状态到 store
+  try { if (store) { await store.set('focusMode', focusMode); await store.save() } } catch {}
+  // 如果退出专注模式，确保 titlebar 可见
+  if (!focusMode) {
+    const titlebar = document.querySelector('.titlebar') as HTMLElement | null
+    if (titlebar) titlebar.classList.remove('show')
+  }
+}
+
+async function getFocusMode(): Promise<boolean> {
+  try { if (!store) return focusMode; const v = await store.get('focusMode'); return !!v } catch { return focusMode }
+}
+
+function initFocusModeEvents() {
+  const triggerZone = document.getElementById('focus-trigger-zone')
+  const titlebar = document.querySelector('.titlebar') as HTMLElement | null
+  if (!triggerZone || !titlebar) return
+
+  // 鼠标进入顶部触发区域：延迟显示 titlebar
+  triggerZone.addEventListener('mouseenter', () => {
+    if (!focusMode) return
+    if (_focusTitlebarHideTimer) { clearTimeout(_focusTitlebarHideTimer); _focusTitlebarHideTimer = null }
+    if (_focusTitlebarShowTimer) return
+    _focusTitlebarShowTimer = window.setTimeout(() => {
+      _focusTitlebarShowTimer = null
+      if (focusMode) titlebar.classList.add('show')
+    }, 150)
+  })
+
+  // 鼠标进入 titlebar：保持显示
+  titlebar.addEventListener('mouseenter', () => {
+    if (!focusMode) return
+    if (_focusTitlebarHideTimer) { clearTimeout(_focusTitlebarHideTimer); _focusTitlebarHideTimer = null }
+    if (_focusTitlebarShowTimer) { clearTimeout(_focusTitlebarShowTimer); _focusTitlebarShowTimer = null }
+    titlebar.classList.add('show')
+  })
+
+  // 鼠标离开 titlebar：延迟隐藏
+  titlebar.addEventListener('mouseleave', () => {
+    if (!focusMode) return
+    if (_focusTitlebarShowTimer) { clearTimeout(_focusTitlebarShowTimer); _focusTitlebarShowTimer = null }
+    if (_focusTitlebarHideTimer) { clearTimeout(_focusTitlebarHideTimer); _focusTitlebarHideTimer = null }
+    _focusTitlebarHideTimer = window.setTimeout(() => {
+      _focusTitlebarHideTimer = null
+      if (focusMode && !titlebar.matches(':hover')) titlebar.classList.remove('show')
+    }, 300)
+  })
+
+  // 窗口大小变化时（最大化/还原）：检查并隐藏 titlebar
+  window.addEventListener('resize', () => {
+    if (!focusMode) return
+    // 清除所有计时器
+    if (_focusTitlebarShowTimer) { clearTimeout(_focusTitlebarShowTimer); _focusTitlebarShowTimer = null }
+    if (_focusTitlebarHideTimer) { clearTimeout(_focusTitlebarHideTimer); _focusTitlebarHideTimer = null }
+    // 延迟检查，等待窗口状态稳定
+    _focusTitlebarHideTimer = window.setTimeout(() => {
+      _focusTitlebarHideTimer = null
+      if (focusMode && !titlebar.matches(':hover') && !triggerZone.matches(':hover')) {
+        titlebar.classList.remove('show')
+      }
+    }, 200)
+  })
+}
+// ========== 专注模式结束 ==========
+
 async function pickLibraryRoot(): Promise<string | null> {
   try {
     const sel = await open({ directory: true, multiple: false } as any)
@@ -7308,6 +7387,8 @@ function bindEvents() {
     }
     if (e.ctrlKey && e.key.toLowerCase() === 'b') { e.preventDefault(); guard(formatBold)(); if (mode === 'preview') void renderPreview(); else if (wysiwyg) scheduleWysiwygRender(); return }
     if (e.ctrlKey && e.key.toLowerCase() === 'i') { e.preventDefault(); guard(formatItalic)(); if (mode === 'preview') void renderPreview(); else if (wysiwyg) scheduleWysiwygRender(); return }
+    // 专注模式快捷键 Ctrl+Shift+F
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') { e.preventDefault(); await toggleFocusMode(); return }
     // 文件操作快捷键
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'o') { e.preventDefault(); await openFile2(); return }
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 's') { e.preventDefault(); await saveAs(); return }
@@ -8014,6 +8095,8 @@ function bindEvents() {
     refreshStatus()
     bindEvents()  // 🔧 关键：无论存储是否成功，都要绑定事件
     initContextMenuListener()  // 初始化右键菜单监听
+    // 恢复专注模式状态
+    try { getFocusMode().then(v => { if (v) toggleFocusMode(true) }) } catch {}
     // 依据当前语言，应用一次 UI 文案（含英文简写，避免侧栏溢出）
     try { applyI18nUi() } catch {}
     try { logInfo('打点:事件绑定完成') } catch {}

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2025-11-19T12:00:00Z",
+  "updatedAt": "2025-11-23T12:00:00Z",
   "ttlSeconds": 3600,
   "items": [
     {
@@ -11,6 +11,17 @@
       "id": "typecho-publisher-flymd",
       "install": {
         "ref": "TGU-HansJack/typecho-publisher-flymd@http",
+        "type": "github"
+      }
+    },
+    {
+      "homepage": "https://github.com/TGU-HansJack/flymd-halo",
+      "name": "Halo Publisher",
+      "description": "发布到 Halo",
+      "author": "HansJack",
+      "id": "flymd-halo",
+      "install": {
+        "ref": "TGU-HansJack/flymd-halo@main",
         "type": "github"
       }
     },

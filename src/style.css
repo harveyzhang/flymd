@@ -951,6 +951,12 @@ body > .block-menu { display: none !important; }
 .library .lib-choose-btn:hover { background: rgba(127,127,127,0.2); }
 .library .lib-choose-btn:active { background: rgba(127,127,127,0.25); }
 .library .lib-name { flex: 1; color: var(--fg); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 14px; font-weight: 600; padding-left: 4px; opacity: 0.9; }
+.library .lib-toggle-btn { -webkit-app-region: no-drag; cursor: pointer; border: none; background: none; color: var(--fg); font-size: 18px; width: 30px; height: 30px; display: none; align-items: center; justify-content: center; transition: opacity 0.2s, background 0.2s; border-radius: 4px; margin: 0 2px; padding: 0; line-height: 1; font-weight: 300; opacity: 0.5; font-family: monospace; flex-shrink: 0; }
+.library .lib-toggle-btn:hover { opacity: 0.8; background: rgba(127, 127, 127, 0.1); }
+body.focus-mode .library .lib-toggle-btn { display: flex; }
+.lib-float-toggle { -webkit-app-region: no-drag; cursor: pointer; border: none; background: none; color: var(--fg); font-size: 18px; width: 30px; height: 30px; display: none; align-items: center; justify-content: center; transition: opacity 0.2s, background 0.2s; border-radius: 4px; padding: 0; line-height: 1; font-weight: 300; opacity: 0.5; font-family: monospace; position: fixed; top: 12px; left: 12px; z-index: 100; }
+.lib-float-toggle:hover { opacity: 0.8; background: rgba(127, 127, 127, 0.1); }
+body.focus-mode .lib-float-toggle.show { display: flex; }
 .library .lib-actions { display: flex; align-items: center; gap: 6px; }
 .library .lib-action-btn { -webkit-app-region: no-drag; cursor: pointer; border: 1px solid var(--border); background: rgba(127,127,127,0.04); color: var(--fg); border-radius: 6px; padding: 5px 10px; font-size: 12px; font-weight: 500; transition: all 0.15s ease; flex: 1; text-align: center; }
 .library .lib-action-btn:hover { background: rgba(127,127,127,0.12); border-color: rgba(127,127,127,0.25); }

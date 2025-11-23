@@ -2609,6 +2609,7 @@ wysiwygCaretEl.id = 'wysiwyg-caret'
       <div class="lib-title-row">
         <button class="lib-choose-btn" id="lib-choose">${t('lib.choose')}</button>
         <div class="lib-name" id="lib-path"></div>
+        <button class="lib-toggle-btn" id="lib-toggle">&lt;</button>
       </div>
       <div class="lib-actions">
         <button class="lib-action-btn active" id="lib-tab-files">${t('tab.files')}</button>
@@ -2665,6 +2666,37 @@ wysiwygCaretEl.id = 'wysiwyg-caret'
       ;(async () => { try { libraryDocked = await getLibraryDocked(); elPin.textContent = libraryDocked ? t('lib.pin.auto') : t('lib.pin.fixed'); applyLibraryLayout() } catch {} })()
       elPin.addEventListener('click', () => { void setLibraryDocked(!libraryDocked) })
     }
+    // 绑定侧栏收起/展开按钮
+    const elToggle = library.querySelector('#lib-toggle') as HTMLButtonElement | null
+    if (elToggle) {
+      elToggle.addEventListener('click', () => {
+        try {
+          showLibrary(false)
+        } catch {}
+      })
+    }
+  } catch {}
+  // 创建浮动展开按钮（侧栏隐藏时显示，仅在专注模式）
+  try {
+    const floatToggle = document.createElement('button')
+    floatToggle.id = 'lib-float-toggle'
+    floatToggle.className = 'lib-float-toggle'
+    floatToggle.innerHTML = '&gt;'
+    floatToggle.title = '展开侧栏'
+    floatToggle.addEventListener('click', () => {
+      try {
+        showLibrary(true)
+      } catch {}
+    })
+    containerEl.appendChild(floatToggle)
+    // 监听侧栏显示/隐藏状态，切换浮动按钮显示
+    const observer = new MutationObserver(() => {
+      try {
+        const isHidden = library.classList.contains('hidden')
+        floatToggle.classList.toggle('show', isHidden)
+      } catch {}
+    })
+    observer.observe(library, { attributes: true, attributeFilter: ['class'] })
   } catch {}
         // 重新创建关于对话框并挂载
         const about = document.createElement('div')

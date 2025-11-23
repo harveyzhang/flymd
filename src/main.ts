@@ -1168,7 +1168,8 @@ function showContextMenu(x: number, y: number, ctx: ContextMenuContext) {
       menuHtml += renderContextMenuItem(item, ctx, callbacks, idCounter)
     }
 
-    menu.innerHTML = menuHtml
+    const tipHtml = '<div class="context-menu-tip">按住 Shift 再次右键可打开原生菜单</div>'
+    menu.innerHTML = menuHtml + tipHtml
     document.body.appendChild(menu)
     _contextMenuEl = menu
 

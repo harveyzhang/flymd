@@ -39,6 +39,7 @@ let __AI_CTX_MENU_DISPOSER__ = null // 保存右键菜单清理函数
 let __AI_IS_FREE_MODE__ = false // 缓存免费模式状态，供右键菜单 condition 同步读取
 let __AI_LAST_DOC_HASH__ = '' // 缓存上次渲染时的文档哈希，避免不必要的重新渲染
 let __AI_FN_DEBOUNCE_TIMER__ = null // 文档名观察者防抖定时器
+let __AI_CONTEXT__ = null // 保存插件 context，供消息操作按钮使用
 
 // ========== 工具函数 ==========
 async function loadCfg(context) {
@@ -151,16 +152,23 @@ function ensureCss() {
     '.ai-toolbar-controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px}',
     '.ai-toolbar-actions{display:grid;width:100%;gap:8px;grid-template-columns:repeat(auto-fit,minmax(90px,1fr))}',
     '#ai-chat{flex:1;overflow:auto;padding:16px 18px;background:#fff;display:flex;flex-direction:column}',
-    '.msg{white-space:pre-wrap;line-height:1.55;border-radius:16px;padding:12px 14px;margin:8px 0;box-shadow:0 6px 16px rgba(15,23,42,.08);max-width:88%;position:relative;font-size:14px}',
-    '.msg.u{background:linear-gradient(135deg,#e0f2ff,#f0f7ff);border:1px solid rgba(59,130,246,.3);margin-left:auto}',
-    '.msg.a{background:#fefefe;border:1px solid #e5e7eb;margin-right:auto}',
+    '.msg-wrapper{display:flex;flex-direction:column;margin:8px 0;max-width:88%}',
+    '.msg-wrapper:has(.msg.u){margin-left:auto;align-items:flex-end}',
+    '.msg-wrapper:has(.msg.a){margin-right:auto;align-items:flex-start}',
+    '.msg{white-space:pre-wrap;line-height:1.55;border-radius:16px;padding:12px 14px;box-shadow:0 6px 16px rgba(15,23,42,.08);position:relative;font-size:14px;width:100%}',
+    '.msg.u{background:linear-gradient(135deg,#e0f2ff,#f0f7ff);border:1px solid rgba(59,130,246,.3)}',
+    '.msg.a{background:#fefefe;border:1px solid #e5e7eb}',
     '.msg.u::before{content:"";display:none}',
     '.msg.a::before{content:"AI";position:absolute;top:-9px;left:12px;font-size:11px;color:#0f172a;background:#fff;border-radius:10px;padding:0 6px;border:1px solid rgba(15,23,42,.15)}',
-    '#ai-input{display:flex;gap:8px;padding:10px;border-top:1px solid #e5e7eb;background:#fafafa}',
-    '#ai-input textarea{flex:1;min-height:72px;background:#fff;border:1px solid #e5e7eb;color:#0f172a;border-radius:10px;padding:10px 12px}',
-    '#ai-input .btn-group{display:flex;flex-direction:column;gap:6px;min-width:0}',
-    '#ai-input button{padding:6px 8px;border-radius:8px;border:1px solid #e5e7eb;background:#ffffff;color:#0f172a;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}',
-    '#ai-input button:hover{background:#f8fafc}',
+    '.msg-actions{display:flex;gap:12px;margin-top:8px;flex-wrap:wrap}',
+    '.msg-action-btn{padding:0;border:none;background:none;color:#64748b;font-size:12px;cursor:pointer;text-decoration:none;transition:color .2s}',
+    '.msg-action-btn:hover{color:#0f172a;text-decoration:underline}',
+    '#ai-input{position:relative;padding:10px;border-top:1px solid #e5e7eb;background:#fafafa}',
+    '#ai-input textarea{width:100%;min-height:88px;background:#fff;border:1px solid #e5e7eb;color:#0f172a;border-radius:10px;padding:10px 60px 10px 12px;resize:vertical;font-family:inherit;font-size:14px;box-sizing:border-box}',
+    '#ai-input textarea:focus{outline:none;border-color:#3b82f6}',
+    '#ai-send{position:absolute;right:20px;bottom:24px;padding:0;border:none;background:none;color:#3b82f6;font-size:14px;cursor:pointer;font-weight:500;text-decoration:none;transition:color .2s}',
+    '#ai-send:hover{color:#1d4ed8;text-decoration:underline}',
+    '#ai-send:active{transform:none}',
     '#ai-vresizer{position:absolute;right:0;top:0;width:8px;height:100%;cursor:ew-resize;background:transparent;z-index:10}',
     '#ai-vresizer:hover{background:rgba(59,130,246,0.15)}',
     '#ai-resizer{position:absolute;right:0;bottom:0;width:12px;height:12px;cursor:nwse-resize;background:transparent}',
@@ -202,10 +210,13 @@ function ensureCss() {
     '#ai-assist-win.dark .msg.u{background:linear-gradient(135deg,#1f3352,#0f172a);border:1px solid #1d4ed8}',
     '#ai-assist-win.dark .msg.a{background:#111827;border:1px solid #1f2937}',
     '#ai-assist-win.dark .msg.a::before{background:#111827;color:#f8fafc;border-color:#1f2937}',
+    '#ai-assist-win.dark .msg-action-btn{color:#9ca3af}',
+    '#ai-assist-win.dark .msg-action-btn:hover{color:#e5e7eb}',
     '#ai-assist-win.dark #ai-input{background:#0f172a;border-top:1px solid #1f2937}',
     '#ai-assist-win.dark #ai-input textarea{background:#0b1220;border:1px solid #1f2937;color:#e5e7eb}',
-    '#ai-assist-win.dark #ai-input button{background:#111827;color:#e5e7eb;border:1px solid #1f2937}',
-    '#ai-assist-win.dark #ai-input button:hover{background:#0f172a}',
+    '#ai-assist-win.dark #ai-input textarea:focus{border-color:#3b82f6}',
+    '#ai-assist-win.dark #ai-send{color:#60a5fa}',
+    '#ai-assist-win.dark #ai-send:hover{color:#93c5fd}',
     '#ai-assist-win.dark #ai-toolbar .btn{background:#111827;color:#e5e7eb;border:1px solid #1f2937}',
     '#ai-assist-win.dark #ai-toolbar .btn.action{background:#111827;color:#e5e7eb;border:1px solid #1f2937}',
     '#ai-assist-win.dark #ai-toolbar .btn.action:hover{background:#0f172a}',
@@ -245,17 +256,19 @@ function pushMsg(role, content) {
 function renderMsgs(root) {
   const msgs = __AI_SESSION__.messages
   // 优化：检查是否需要重新渲染（对比消息数量和最后一条消息内容）
-  const existingMsgs = root.querySelectorAll('.msg')
+  const existingMsgs = root.querySelectorAll('.msg-wrapper')
   const needRerender = (() => {
     if (existingMsgs.length !== msgs.length) return true
     if (msgs.length === 0) return false
     // 检查最后一条消息内容是否一致
     const lastMsg = msgs[msgs.length - 1]
-    const lastDom = existingMsgs[existingMsgs.length - 1]
-    if (!lastDom) return true
+    const lastWrapper = existingMsgs[existingMsgs.length - 1]
+    if (!lastWrapper) return true
+    const lastMsgDiv = lastWrapper.querySelector('.msg')
+    if (!lastMsgDiv) return true
     const lastRole = lastMsg.role === 'user' ? 'u' : 'a'
-    if (!lastDom.classList.contains(lastRole)) return true
-    if (lastDom.textContent !== String(lastMsg.content || '')) return true
+    if (!lastMsgDiv.classList.contains(lastRole)) return true
+    if (lastMsgDiv.textContent !== String(lastMsg.content || '')) return true
     return false
   })()
 
@@ -267,11 +280,73 @@ function renderMsgs(root) {
 
   // 需要重新渲染
   root.innerHTML = ''
-  msgs.forEach(m => {
+  msgs.forEach((m, idx) => {
+    // 创建消息容器
+    const wrapper = DOC().createElement('div')
+    wrapper.className = 'msg-wrapper'
+
+    // 创建消息气泡
     const d = DOC().createElement('div')
     d.className = 'msg ' + (m.role === 'user' ? 'u' : 'a')
     d.textContent = String(m.content || '')
-    root.appendChild(d)
+    wrapper.appendChild(d)
+
+    // 为 AI 回复添加操作按钮
+    if (m.role === 'assistant' && m.content) {
+      const btnGroup = DOC().createElement('div')
+      btnGroup.className = 'msg-actions'
+
+      const btnCopy = DOC().createElement('button')
+      btnCopy.className = 'msg-action-btn'
+      btnCopy.textContent = '复制'
+      btnCopy.title = '复制此回复'
+      btnCopy.addEventListener('click', () => {
+        try { navigator.clipboard?.writeText(String(m.content || '')) } catch {}
+      })
+
+      const btnInsert = DOC().createElement('button')
+      btnInsert.className = 'msg-action-btn'
+      btnInsert.textContent = '光标插入'
+      btnInsert.title = '在光标处插入此回复'
+      btnInsert.addEventListener('click', async () => {
+        const s = String(m.content || '').trim()
+        if (!s) return
+        if (!__AI_CONTEXT__) return
+        try { await __AI_CONTEXT__.insertAtCursor('\n' + s + '\n') } catch {
+          try { const cur = String(__AI_CONTEXT__.getEditorValue()||''); __AI_CONTEXT__.setEditorValue(cur + (cur.endsWith('\n')?'':'\n') + s + '\n') } catch {}
+        }
+        try { __AI_CONTEXT__.ui.notice('已在光标处插入', 'ok', 1400) } catch {}
+      })
+
+      const btnReplace = DOC().createElement('button')
+      btnReplace.className = 'msg-action-btn'
+      btnReplace.textContent = '替换选区'
+      btnReplace.title = '用此回复替换选中内容'
+      btnReplace.addEventListener('click', async () => {
+        const s = String(m.content || '').trim()
+        if (!s) return
+        if (!__AI_CONTEXT__) return
+        try {
+          const sel = await __AI_CONTEXT__.getSelection?.()
+          if (sel && sel.end > sel.start) {
+            await __AI_CONTEXT__.replaceRange(sel.start, sel.end, s)
+            __AI_CONTEXT__.ui.notice('已替换选区', 'ok', 1400)
+            return
+          }
+        } catch {}
+        __AI_CONTEXT__.ui.notice('没有选区，已改为光标处插入', 'ok', 1400)
+        try { await __AI_CONTEXT__.insertAtCursor('\n' + s + '\n') } catch {
+          try { const cur = String(__AI_CONTEXT__.getEditorValue()||''); __AI_CONTEXT__.setEditorValue(cur + (cur.endsWith('\n')?'':'\n') + s + '\n') } catch {}
+        }
+      })
+
+      btnGroup.appendChild(btnCopy)
+      btnGroup.appendChild(btnInsert)
+      btnGroup.appendChild(btnReplace)
+      wrapper.appendChild(btnGroup)
+    }
+
+    root.appendChild(wrapper)
   })
   root.scrollTop = root.scrollHeight
 }
@@ -720,9 +795,10 @@ async function mountWindow(context){
     '  </div>',
     ' </div>',
     ' <div id="ai-chat"></div>',
-    ' <div id="ai-input"><textarea id="ai-text" placeholder="输入与 AI 对话…"></textarea><div class="btn-group">',
-    '  <button id="ai-send" title="发送消息">发送</button><button id="ai-apply-cursor" title="在光标处插入">光标插入</button><button id="ai-apply-repl" title="替换选中内容">替换选区</button><button id="ai-copy" title="复制AI回复">复制</button>',
-    ' </div></div>',
+    ' <div id="ai-input">',
+    '  <textarea id="ai-text" placeholder="输入与 AI 对话…"></textarea>',
+    '  <button id="ai-send" title="发送消息">发送</button>',
+    ' </div>',
     '</div><div id="ai-vresizer" title="拖动调整宽度"></div><div id="ai-resizer" title="拖动调整尺寸"></div>'
   ].join('')
   DOC().body.appendChild(el)
@@ -753,9 +829,6 @@ async function mountWindow(context){
   } catch {}
   el.querySelector('#ai-send').addEventListener('click',()=>{ sendFromInput(context) })
   try { const ta = el.querySelector('#ai-text'); ta?.addEventListener('keydown', (e)=>{ if (e.key==='Enter' && !e.shiftKey){ e.preventDefault(); try { sendFromInput(context) } catch {} } }) } catch {}
-  el.querySelector('#ai-apply-cursor').addEventListener('click',()=>{ applyLastAtCursor(context) })
-  el.querySelector('#ai-apply-repl').addEventListener('click',()=>{ replaceSelectionWithLast(context) })
-  el.querySelector('#ai-copy').addEventListener('click',()=>{ copyLast() })
   el.querySelector('#ai-clear').addEventListener('click',()=>{ clearConversation(context) })
   el.querySelector('#ai-s-new').addEventListener('click',()=>{ createNewSession(context) })
   el.querySelector('#ai-s-del').addEventListener('click',()=>{ deleteCurrentSession(context) })
@@ -1549,6 +1622,8 @@ export async function openSettings(context){
 
 // ========== 插件主入口 ==========
 export async function activate(context) {
+  // 保存 context 供消息操作按钮使用
+  __AI_CONTEXT__ = context
   // 预加载配置（在注册菜单前，以便 condition 能正确读取免费模式状态）
   try { const cfg = await loadCfg(context); await saveCfg(context, cfg) } catch {}
   try { __AI_SESSION__ = await loadSession(context) } catch {}
@@ -1701,6 +1776,7 @@ export function deactivate(){
   __AI_MQ_BOUND__ = false
   __AI_LAST_DOC_HASH__ = ''
   __AI_FN_DEBOUNCE_TIMER__ = null
+  __AI_CONTEXT__ = null
 }
 
 // 独立窗口入口：直接挂载 AI 浮窗

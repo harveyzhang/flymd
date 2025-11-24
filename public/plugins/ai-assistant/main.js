@@ -10,7 +10,7 @@ const CFG_KEY = 'ai.config'
 const SES_KEY = 'ai.session.default'
 
 const DEFAULT_CFG = {
-  provider: 'openai', // 预留字段（仅 openai）
+  provider: 'free', // 默认使用免费模式
   baseUrl: 'https://api.openai.com/v1',
   apiKey: '',
   model: 'gpt-4o-mini',

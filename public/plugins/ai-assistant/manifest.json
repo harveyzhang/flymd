@@ -5,6 +5,9 @@
   "author": "flyMD",
   "description": "多供应商 AI 写作助手",
   "homepage": "https://github.com/flyhunterl/flymd",
-  "main": "main.js"
+  "main": "main.js",
+  "assets": [
+    "Powered-by-dark.png",
+    "Powered-by-light.png"
+  ]
 }
-

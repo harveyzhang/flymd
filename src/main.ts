@@ -696,7 +696,16 @@ let _lastPasteCombo: 'normal' | 'plain' | null = null
 let store: Store | null = null
 let uploaderEnabledSnapshot = false
 // 插件管理（简单实现）
-type PluginManifest = { id: string; name?: string; version?: string; author?: string; description?: string; main?: string; minHostVersion?: string }
+type PluginManifest = {
+  id: string
+  name?: string
+  version?: string
+  author?: string
+  description?: string
+  main?: string
+  minHostVersion?: string
+  assets?: string[]
+}
 type InstalledPlugin = { id: string; name?: string; version?: string; enabled?: boolean; showInMenuBar?: boolean; dir: string; main: string; builtin?: boolean; description?: string; manifestUrl?: string }
 
 // 右键菜单相关类型
@@ -9129,6 +9138,33 @@ async function fetchTextSmart(url: string): Promise<string> {
   return await r2.text()
 }
 
+async function fetchBinarySmart(url: string): Promise<Uint8Array> {
+  try {
+    const http = await getHttpClient()
+    if (http && http.fetch) {
+      const resp = await http.fetch(url, { method: 'GET', responseType: http.ResponseType?.Binary })
+      if (resp && (resp.ok === true || (typeof resp.status === 'number' && resp.status >= 200 && resp.status < 300))) {
+        if (resp.data instanceof Uint8Array) return resp.data
+        if (Array.isArray(resp.data)) return new Uint8Array(resp.data)
+        if (resp.arrayBuffer) {
+          const buf = await resp.arrayBuffer()
+          if (buf) return new Uint8Array(buf)
+        }
+        if (resp.data && typeof resp.data === 'string') {
+          const binaryString = resp.data as string
+          const arr = new Uint8Array(binaryString.length)
+          for (let i = 0; i < binaryString.length; i++) arr[i] = binaryString.charCodeAt(i) & 0xff
+          return arr
+        }
+      }
+    }
+  } catch {}
+  const r2 = await fetch(url)
+  if (!r2.ok) throw new Error(`HTTP ${r2.status}`)
+  const buf = await r2.arrayBuffer()
+  return new Uint8Array(buf)
+}
+
 // 插件市场：获取 GitHub 索引地址（优先级：Store > 环境变量 > 默认）
 async function getMarketUrl(): Promise<string | null> {
   try { if (store) { const u = await store.get('pluginMarket:url'); if (typeof u === 'string' && /^https?:\/\//i.test(u)) return u } } catch {}
@@ -9271,6 +9307,16 @@ async function installPluginFromGit(inputRaw: string, opt?: { enabled?: boolean 
     }
   }
 
+  async function ensurePluginPath(dirPath: string, relPath: string): Promise<void> {
+    const parts = relPath.split('/').filter((p) => !!p)
+    if (parts.length <= 1) return
+    let cur = dirPath
+    for (let i = 0; i < parts.length - 1; i++) {
+      cur += '/' + parts[i]
+      try { await mkdir(cur as any, { baseDir: BaseDirectory.AppLocalData, recursive: true } as any) } catch {}
+    }
+  }
+
   const mainRel = (manifest.main || 'main.js').replace(/^\/+/, '')
   const mainUrl = parsed.manifestUrl.replace(/manifest\.json$/i, '') + mainRel
   const mainCode = await fetchTextSmart(mainUrl)
@@ -9279,6 +9325,21 @@ async function installPluginFromGit(inputRaw: string, opt?: { enabled?: boolean 
   await mkdir(dir as any, { baseDir: BaseDirectory.AppLocalData, recursive: true } as any)
   await writeTextFile(`${dir}/manifest.json` as any, JSON.stringify(manifest, null, 2), { baseDir: BaseDirectory.AppLocalData } as any)
   await writeTextFile(`${dir}/${mainRel}` as any, mainCode, { baseDir: BaseDirectory.AppLocalData } as any)
+  const assetList = Array.isArray(manifest.assets) ? manifest.assets : []
+  const assetBase = parsed.manifestUrl.replace(/manifest\.json$/i, '')
+  for (const raw of assetList) {
+    let rel = String(raw || '').trim()
+    if (!rel) continue
+    rel = rel.replace(/\\/g, '/').replace(/^\/+/, '')
+    if (!rel || rel.includes('..')) continue
+    try {
+      await ensurePluginPath(dir, rel)
+      const data = await fetchBinarySmart(assetBase + rel)
+      await writeFile(`${dir}/${rel}` as any, data, { baseDir: BaseDirectory.AppLocalData } as any)
+    } catch (e) {
+      console.warn(`[Extensions] 资源下载失败: ${rel}`, e)
+    }
+  }
   const enabled = (opt && typeof opt.enabled === 'boolean') ? opt.enabled : true
   const record: InstalledPlugin = {
     id: manifest.id,

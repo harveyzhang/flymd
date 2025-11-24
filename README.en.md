@@ -105,7 +105,7 @@ Built-in free AI service—**ready to use out of the box**, no API key required.
 
 ### Installation
 Download the installer for your platform from [Releases](https://github.com/flyhunterl/flymd/releases):
-- **Windows**: Requires WebView2 (pre-installed on most systems)
+- **Windows**: Install directly via `winget install flyhunterl.FlyMD`
 - **Linux**: Supports mainstream desktop environments
 - **macOS**: Supports Intel and Apple Silicon
 

@@ -106,7 +106,7 @@ FlyMD 是一款仅 **7MB** 的高性能 Markdown 编辑器，支持**所见所�
 
 ### 安装
 从 [Releases](https://github.com/flyhunterl/flymd/releases) 下载对应平台安装包：
-- **Windows**：需安装 WebView2（多数系统已内置）
+- **Windows**：可以通过 `winget install flyhunterl.FlyMD` 一键安装
 - **Linux**：支持主流桌面环境
 - **macOS**：支持 Intel 和 Apple Silicon
 

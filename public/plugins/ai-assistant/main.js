@@ -508,6 +508,7 @@ async function refreshHeader(context){
     const modelInput = el('ai-model')
     const modelPowered = el('ai-model-powered')
     const modelPoweredImg = el('ai-model-powered-img')
+    const freeModelLabel = el('ai-free-model-label')
     const freeModelSelect = el('ai-free-model')
     if (modelLabel) modelLabel.style.display = isFree ? 'none' : ''
     if (modelInput) modelInput.style.display = isFree ? 'none' : ''
@@ -515,6 +516,7 @@ async function refreshHeader(context){
       freeModelSelect.style.display = isFree ? '' : 'none'
       if (isFree) freeModelSelect.value = normalizeFreeModelKey(cfg.freeModel)
     }
+    if (freeModelLabel) freeModelLabel.style.display = isFree ? '' : 'none'
     if (modelPowered && modelPoweredImg) {
       modelPowered.style.display = isFree ? 'inline-block' : 'none'
       if (isFree) {
@@ -637,7 +639,7 @@ async function mountWindow(context){
     '<div id="ai-body">',
     ' <div id="ai-toolbar">',
     '  <div id="ai-selects" class="small">',
-    '   <label id="ai-model-label">模型</label> <input id="ai-model" placeholder="如 gpt-4o-mini" style="width:160px"/><a id="ai-model-powered" href="https://cloud.siliconflow.cn/i/X96CT74a" target="_blank" rel="noopener noreferrer" style="display:none;border:none;outline:none;"><img id="ai-model-powered-img" src="" alt="Powered by" style="height:20px;width:auto;border:none;outline:none;vertical-align:middle;"/></a><select id="ai-free-model" title="选择免费模型" style="display:none;margin-left:8px;"><option value="qwen">Qwen</option><option value="glm">GLM</option></select>',
+    '   <label id="ai-model-label">模型</label> <input id="ai-model" placeholder="如 gpt-4o-mini" style="width:160px"/><a id="ai-model-powered" href="https://cloud.siliconflow.cn/i/X96CT74a" target="_blank" rel="noopener noreferrer" style="display:none;border:none;outline:none;"><img id="ai-model-powered-img" src="" alt="Powered by" style="height:20px;width:auto;border:none;outline:none;vertical-align:middle;"/></a><span id="ai-free-model-label" style="display:none;margin:0 4px 0 12px;">模型：</span><select id="ai-free-model" title="选择免费模型" style="display:none;margin-left:0;"><option value="qwen">Qwen</option><option value="glm">GLM</option></select>',
     '  </div>',
     '  <div style="flex:1"></div>',
     '  <button class="btn" id="ai-dock-toggle" title="在侧栏/浮窗之间切换">浮动</button>',

@@ -462,6 +462,24 @@ async function refreshHeader(context){
       else b.textContent = '左侧'
     }
   } catch {}
+  // 免费模式下隐藏模型输入框，显示 Powered by 图片
+  try {
+    const isFree = isFreeProvider(cfg)
+    const modelLabel = el('ai-model-label')
+    const modelInput = el('ai-model')
+    const modelPowered = el('ai-model-powered')
+    const modelPoweredImg = el('ai-model-powered-img')
+    if (modelLabel) modelLabel.style.display = isFree ? 'none' : ''
+    if (modelInput) modelInput.style.display = isFree ? 'none' : ''
+    if (modelPowered && modelPoweredImg) {
+      modelPowered.style.display = isFree ? 'inline-block' : 'none'
+      if (isFree) {
+        const mainWin = el('ai-assist-win')
+        const isDark = mainWin ? mainWin.classList.contains('dark') : (WIN().matchMedia && WIN().matchMedia('(prefers-color-scheme: dark)').matches)
+        modelPoweredImg.src = isDark ? 'plugins/ai-assistant/Powered-by-dark.png' : 'plugins/ai-assistant/Powered-by-light.png'
+      }
+    }
+  } catch {}
 }
 
 async function refreshSessionSelect(context) {
@@ -563,7 +581,7 @@ async function mountWindow(context){
     '<div id="ai-body">',
     ' <div id="ai-toolbar">',
     '  <div id="ai-selects" class="small">',
-    '   <label>模型</label> <input id="ai-model" placeholder="如 gpt-4o-mini" style="width:160px"/>',
+    '   <label id="ai-model-label">模型</label> <input id="ai-model" placeholder="如 gpt-4o-mini" style="width:160px"/><a id="ai-model-powered" href="https://cloud.siliconflow.cn/i/X96CT74a" target="_blank" rel="noopener noreferrer" style="display:none;border:none;outline:none;"><img id="ai-model-powered-img" src="" alt="Powered by" style="height:20px;width:auto;border:none;outline:none;vertical-align:middle;"/></a>',
     '  </div>',
     '  <div style="flex:1"></div>',
     '  <button class="btn" id="ai-dock-toggle" title="在侧栏/浮窗之间切换">浮动</button>',
@@ -1252,7 +1270,7 @@ export async function openSettings(context){
     ' <div id="ai-set-head"><div id="ai-set-title">AI 设置</div><button id="ai-set-close" title="关闭">×</button></div>',
     ' <div id="ai-set-body">',
     '  <div class="set-row mode-row"><label>模式</label><span class="mode-label" id="mode-label-custom">自定义</span><label class="toggle-switch"><input type="checkbox" id="set-provider-toggle"/><span class="toggle-slider"></span></label><span class="mode-label" id="mode-label-free">免费模型</span></div>',
-    '  <div class="free-warning" id="free-warning">免费小参数模型由作者提供，使用硅基流动平台。响应速度较慢，仅供低强度使用，推荐注册硅基流动获得更好的体验。</div>',
+    '  <div class="free-warning" id="free-warning">免费模型由硅基流动提供，<a href="https://cloud.siliconflow.cn/i/X96CT74a" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline;">推荐注册硅基流动账号获得顶级模型体验</a></div>',
     '  <div class="set-row custom-only"><label>Base URL</label><select id="set-base-select"><option value="https://api.openai.com/v1">OpenAI</option><option value="https://api.siliconflow.cn/v1">硅基流动</option><option value="https://apic1.ohmycdn.com/api/v1/ai/openai/cc-omg/v1">OMG资源包</option><option value="custom">自定义</option></select><input id="set-base" type="text" placeholder="https://api.openai.com/v1"/></div>',
     '  <div class="set-row custom-only"><label>API Key</label><input id="set-key" type="password" placeholder="sk-..."/></div>',
     '  <div class="set-row custom-only"><label>模型</label><input id="set-model" type="text" placeholder="gpt-4o-mini"/></div>',
@@ -1260,6 +1278,7 @@ export async function openSettings(context){
     '  <div class="set-row"><label>上下文截断</label><input id="set-max" type="number" min="1000" step="500" placeholder="6000"/></div>',
     '  <div class="set-row set-link-row custom-only"><a href="https://cloud.siliconflow.cn/i/X96CT74a" target="_blank" rel="noopener noreferrer">点此注册硅基流动得2000万免费Token</a></div>',
     '  <div class="set-row set-link-row custom-only"><a href="https://x.dogenet.win/i/dXCKvZ6Q" target="_blank" rel="noopener noreferrer">点此注册OMG获得20美元Claude资源包</a></div>',
+    '  <div class="powered-by-img" id="powered-by-container" style="display:none;text-align:center;margin:12px 0 4px 0;"><a href="https://cloud.siliconflow.cn/i/X96CT74a" target="_blank" rel="noopener noreferrer" style="border:none;outline:none;"><img id="powered-by-img" src="" alt="Powered by" style="max-width:180px;height:auto;cursor:pointer;border:none;outline:none;"/></a></div>',
     ' </div>',
     ' <div id="ai-set-actions"><button id="ai-set-cancel">取消</button><button class="primary" id="ai-set-ok">保存</button></div>',
     '</div>'
@@ -1317,6 +1336,18 @@ export async function openSettings(context){
     }
     if (elModeLabelFree) {
       elModeLabelFree.classList.toggle('active', isFree)
+    }
+    // 控制 Powered by 图片的显示/隐藏（仅在免费模式下显示）
+    const elPoweredByContainer = overlay.querySelector('#powered-by-container')
+    const elPoweredByImg = overlay.querySelector('#powered-by-img')
+    if (elPoweredByContainer && elPoweredByImg) {
+      elPoweredByContainer.style.display = isFree ? 'block' : 'none'
+      if (isFree) {
+        // 根据主题选择图片：检查主窗口是否有 dark 类
+        const mainWin = document.getElementById('ai-assist-win')
+        const isDark = mainWin ? mainWin.classList.contains('dark') : (WIN().matchMedia && WIN().matchMedia('(prefers-color-scheme: dark)').matches)
+        elPoweredByImg.src = isDark ? 'plugins/ai-assistant/Powered-by-dark.png' : 'plugins/ai-assistant/Powered-by-light.png'
+      }
     }
   }
   if (elProviderToggle) {
@@ -1525,6 +1556,13 @@ async function applyWinTheme(context, rootEl){
     else if (mode === 'auto') isDark = !!(WIN().matchMedia && WIN().matchMedia('(prefers-color-scheme: dark)').matches)
     if (isDark) rootEl.classList.add('dark'); else rootEl.classList.remove('dark')
     const btn = rootEl.querySelector('#ai-btn-theme'); if (btn) btn.textContent = isDark ? '☀️' : '🌙'
+    // 更新工具栏中免费模式的图片
+    if (isFreeProvider(cfg)) {
+      const modelPoweredImg = el('ai-model-powered-img')
+      if (modelPoweredImg) {
+        modelPoweredImg.src = isDark ? 'plugins/ai-assistant/Powered-by-dark.png' : 'plugins/ai-assistant/Powered-by-light.png'
+      }
+    }
     if (mode === 'auto' && WIN().matchMedia && !__AI_MQ_BOUND__){
       try {
         const mq = WIN().matchMedia('(prefers-color-scheme: dark)')

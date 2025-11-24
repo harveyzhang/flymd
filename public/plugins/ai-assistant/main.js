@@ -37,6 +37,8 @@ let __AI_MQ_BOUND__ = false
 let __AI_MENU_ITEM__ = null // 保存菜单项引用，用于卸载时清理
 let __AI_CTX_MENU_DISPOSER__ = null // 保存右键菜单清理函数
 let __AI_IS_FREE_MODE__ = false // 缓存免费模式状态，供右键菜单 condition 同步读取
+let __AI_LAST_DOC_HASH__ = '' // 缓存上次渲染时的文档哈希，避免不必要的重新渲染
+let __AI_FN_DEBOUNCE_TIMER__ = null // 文档名观察者防抖定时器
 
 // ========== 工具函数 ==========
 async function loadCfg(context) {
@@ -242,6 +244,28 @@ function pushMsg(role, content) {
 
 function renderMsgs(root) {
   const msgs = __AI_SESSION__.messages
+  // 优化：检查是否需要重新渲染（对比消息数量和最后一条消息内容）
+  const existingMsgs = root.querySelectorAll('.msg')
+  const needRerender = (() => {
+    if (existingMsgs.length !== msgs.length) return true
+    if (msgs.length === 0) return false
+    // 检查最后一条消息内容是否一致
+    const lastMsg = msgs[msgs.length - 1]
+    const lastDom = existingMsgs[existingMsgs.length - 1]
+    if (!lastDom) return true
+    const lastRole = lastMsg.role === 'user' ? 'u' : 'a'
+    if (!lastDom.classList.contains(lastRole)) return true
+    if (lastDom.textContent !== String(lastMsg.content || '')) return true
+    return false
+  })()
+
+  if (!needRerender) {
+    // 消息未变化，仅滚动到底部
+    root.scrollTop = root.scrollHeight
+    return
+  }
+
+  // 需要重新渲染
   root.innerHTML = ''
   msgs.forEach(m => {
     const d = DOC().createElement('div')
@@ -448,6 +472,8 @@ async function ensureSessionForDoc(context) {
   }
   const cur = bucket.items.find(it => it.id === bucket.activeId)
   __AI_SESSION__ = { id: cur.id, name: cur.name, messages: cur.messages.slice(), docHash: hash, docTitle: title }
+  // 更新哈希缓存
+  __AI_LAST_DOC_HASH__ = hash
   await saveSessionsDB(context)
 }
 
@@ -792,7 +818,25 @@ function startFilenameObserver(context){
     const target = DOC().getElementById('filename')
     if (!target) return
     __AI_FN_OB__ = new MutationObserver(async () => {
-      try { await ensureSessionForDoc(context); await updateWindowTitle(context); const chat = el('ai-chat'); if (chat) renderMsgs(chat) } catch {}
+      // 防抖：延迟 300ms 执行，避免频繁触发
+      if (__AI_FN_DEBOUNCE_TIMER__) clearTimeout(__AI_FN_DEBOUNCE_TIMER__)
+      __AI_FN_DEBOUNCE_TIMER__ = setTimeout(async () => {
+        try {
+          const content = String(context.getEditorValue() || '')
+          const { hash } = getDocMetaFromContent(context, content)
+          // 只在文档哈希真正改变时才重新渲染（避免因未保存标记等引起的闪烁）
+          if (hash !== __AI_LAST_DOC_HASH__) {
+            __AI_LAST_DOC_HASH__ = hash
+            await ensureSessionForDoc(context)
+            await updateWindowTitle(context)
+            const chat = el('ai-chat')
+            if (chat) renderMsgs(chat)
+          } else {
+            // 哈希未变，仅更新标题
+            await updateWindowTitle(context)
+          }
+        } catch {}
+      }, 300)
     })
     __AI_FN_OB__.observe(target, { characterData: true, childList: true, subtree: true })
   } catch {}
@@ -1625,6 +1669,13 @@ export function deactivate(){
       __AI_CTX_MENU_DISPOSER__()
     }
   } catch {}
+  // 清理防抖定时器
+  try {
+    if (__AI_FN_DEBOUNCE_TIMER__) {
+      clearTimeout(__AI_FN_DEBOUNCE_TIMER__)
+      __AI_FN_DEBOUNCE_TIMER__ = null
+    }
+  } catch {}
   // 清理窗口
   try {
     const win = DOC().getElementById('ai-assist-win')
@@ -1647,6 +1698,8 @@ export function deactivate(){
   __AI_LAST_REPLY__ = ''
   __AI_TOGGLE_LOCK__ = false
   __AI_MQ_BOUND__ = false
+  __AI_LAST_DOC_HASH__ = ''
+  __AI_FN_DEBOUNCE_TIMER__ = null
 }
 
 // 独立窗口入口：直接挂载 AI 浮窗

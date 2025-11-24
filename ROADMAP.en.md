@@ -2,7 +2,7 @@
 
 [简体中文](ROADMAP.md) | [English](ROADMAP.en.md)
 
-## Update v0.4.0
+## Update v0.4.0 (coming soon)
 - Added: Dark mode toggle in theme settings — manually switch to dark theme with auto-saved state
 - Added: Dark mode fully optimizes text display across all windows including library sidebar, dialogs, editor, and WYSIWYG mode
 - Added: AI Assistant now defaults to free model mode with deep SiliconFlow integration — built-in free AI service works out of the box, no API key configuration needed
@@ -15,6 +15,9 @@
 - Improved: AI dialog window now includes boundary checks to ensure at least 100px remains visible when dragging, preventing window loss
 - Improved: Optimized extension settings window display logic, fixed issue where settings dialog wouldn't appear after AI window was closed
 - Improved: WebDAV sync logs now use local timestamps for better readability; logs auto-truncate when exceeding 5MB to prevent unbounded growth
+- Improved: Library sidebar now includes a “Switch Side” button to dock the library on the left or right; Focus Mode window controls automatically swap sides to avoid overlaps
+- Improved: Library tree remembers folder expansion states per library, so your last browsing context is restored after restart
+- Improved: Library action buttons force horizontal text flow so Chinese labels no longer break into two lines
 - Fixed: WebDAV sync notification bubble being obscured by UI in Focus Mode, ensuring sync prompts display properly
 - Fixed: Focus Mode sidebar expand button not displaying on first open
 - Fixed: "Default to WYSIWYG Mode" setting not taking effect after application restart

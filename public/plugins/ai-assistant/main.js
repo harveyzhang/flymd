@@ -41,6 +41,7 @@ let __AI_IS_FREE_MODE__ = false // 缓存免费模式状态，供右键菜单 co
 let __AI_LAST_DOC_HASH__ = '' // 缓存上次渲染时的文档哈希，避免不必要的重新渲染
 let __AI_FN_DEBOUNCE_TIMER__ = null // 文档名观察者防抖定时器
 let __AI_CONTEXT__ = null // 保存插件 context，供消息操作按钮使用
+let __AI_PENDING_ACTION__ = null // 标记待办/提醒快捷模式
 
 // ========== 工具函数 ==========
 async function loadCfg(context) {
@@ -1238,15 +1239,22 @@ async function mountWindow(context){
     const actionSelect = el.querySelector('#ai-quick-action')
     actionSelect?.addEventListener('change', async () => {
       const action = String(actionSelect.value || '').trim()
-      if (action) {
-        actionSelect.value = '' // 重置为智能问答
-        if (action === '待办') {
-          await generateTodos(context)
-        } else if (action === '提醒') {
-          await generateTodosAndPush(context)
-        } else if (['续写', '润色', '纠错', '提纲'].includes(action)) {
-          await quick(context, action)
-        }
+      if (!action) {
+        clearPendingAction(false)
+        return
+      }
+      if (action === '待办') {
+        await promptPendingQuickAction(context, 'todo')
+        return
+      }
+      if (action === '提醒') {
+        await promptPendingQuickAction(context, 'reminder')
+        return
+      }
+      clearPendingAction(false)
+      actionSelect.value = '' // 重置为智能问答
+      if (['续写', '润色', '纠错', '提纲'].includes(action)) {
+        await quick(context, action)
       }
     })
   } catch {}
@@ -1657,7 +1665,7 @@ async function translateText(context) {
   }
 }
 
-  async function generateTodos(context){
+async function generateTodos(context){
   const GENERATING_MARKER = '[正在生成待办]\n\n'
   try {
       const cfg = await loadCfg(context)
@@ -1743,6 +1751,118 @@ async function translateText(context) {
   }
 }
 
+function clearPendingAction(resetSelect = true){
+  __AI_PENDING_ACTION__ = null
+  if (!resetSelect) return
+  try {
+    const select = el('ai-quick-action')
+    if (select) select.value = ''
+  } catch {}
+}
+
+async function promptPendingQuickAction(context, type){
+  if (__AI_SENDING__) {
+    context.ui.notice('请等待当前 AI 响应完成', 'warn', 2000)
+    clearPendingAction()
+    return
+  }
+  await ensureSessionForDoc(context)
+  __AI_PENDING_ACTION__ = type
+  const select = el('ai-quick-action')
+  if (select) select.value = type === 'reminder' ? '提醒' : '待办'
+  const tip = type === 'reminder'
+    ? '请告诉我需要处理的事项内容，我会为您生成待办清单并创建XXTUI提醒。'
+    : '请告诉我需要处理的事项内容，我会为您生成待办清单。'
+  pushMsg('assistant', tip)
+  __AI_LAST_REPLY__ = tip
+  const chat = el('ai-chat')
+  if (chat) renderMsgs(chat)
+  try { await syncCurrentSessionToDB(context) } catch {}
+  try { const elw = el('ai-assist-win'); if (elw) autoFitWindow(context, elw) } catch {}
+  const ta = el('ai-text')
+  if (ta) ta.focus()
+}
+
+async function handlePendingQuickActionInput(context, type, text){
+  if (__AI_SENDING__) {
+    context.ui.notice('AI 正在处理中，请稍候', 'warn', 2000)
+    return
+  }
+  await ensureSessionForDoc(context)
+  pushMsg('user', text)
+  const chat = el('ai-chat')
+  if (chat) renderMsgs(chat)
+  try { await syncCurrentSessionToDB(context) } catch {}
+  await processPendingQuickAction(context, type, text)
+}
+
+async function processPendingQuickAction(context, type, userText){
+  __AI_SENDING__ = true
+  const chat = el('ai-chat')
+  let finalMsg = ''
+  let noticeInfo = null
+  try {
+    const { todos = [] } = await generateTodosForPlugins(context, userText)
+    if (!todos.length) {
+      finalMsg = 'AI 未能生成有效的待办事项，请提供更具体的描述。'
+      noticeInfo = { text: '未能生成有效的待办事项', type: 'warn', duration: 3000 }
+    } else {
+      const todoText = todos.join('\n')
+      if (type === 'reminder') {
+        const api = context.getPluginAPI('xxtui-todo-push')
+        if (!api || !api.parseAndCreateReminders) {
+          finalMsg = `以下是生成的待办清单：\n${todoText}\n\n未检测到 xxtui-todo-push 插件，无法创建提醒。`
+          noticeInfo = { text: '未检测到 xxtui-todo-push 插件，无法创建提醒', type: 'warn', duration: 3500 }
+        } else {
+          try {
+            const payload = todoText + '\n\n'
+            const result = await api.parseAndCreateReminders(payload)
+            const { success = 0, failed = 0 } = result || {}
+            let summary = `提醒创建结果：已创建 ${success} 条提醒`
+            let noticeText = summary
+            let noticeType = 'ok'
+            if (failed > 0) {
+              summary += `，${failed} 条失败`
+              noticeText = `已创建 ${success} 条提醒，${failed} 条失败`
+              noticeType = 'warn'
+            }
+            finalMsg = `以下是生成的待办清单：\n${todoText}\n\n${summary}`
+            noticeInfo = { text: noticeText, type: noticeType, duration: 3500 }
+          } catch (err) {
+            const errMsg = '提醒创建失败：' + (err?.message || '未知错误')
+            console.error('创建提醒失败：', err)
+            finalMsg = `以下是生成的待办清单：\n${todoText}\n\n${errMsg}`
+            noticeInfo = { text: errMsg, type: 'err', duration: 4000 }
+          }
+        }
+      } else {
+        finalMsg = `以下是生成的待办清单：\n${todoText}`
+        noticeInfo = { text: `成功生成 ${todos.length} 条待办事项`, type: 'ok', duration: 2500 }
+      }
+    }
+  } catch (error) {
+    console.error('对话待办生成失败：', error)
+    finalMsg = '生成待办清单失败：' + (error?.message || '未知错误')
+    noticeInfo = { text: finalMsg, type: 'err', duration: 4000 }
+  } finally {
+    __AI_SENDING__ = false
+    clearPendingAction()
+  }
+  if (noticeInfo) {
+    try { context.ui.notice(noticeInfo.text, noticeInfo.type, noticeInfo.duration || 3000) } catch {}
+  }
+  if (!finalMsg) return
+  pushMsg('assistant', finalMsg)
+  __AI_LAST_REPLY__ = finalMsg
+  if (chat) renderMsgs(chat)
+  try { await syncCurrentSessionToDB(context) } catch {}
+  try {
+    const cfg = await loadCfg(context)
+    await maybeNameCurrentSession(context, cfg, finalMsg)
+  } catch {}
+  try { const elw = el('ai-assist-win'); if (elw) autoFitWindow(context, elw) } catch {}
+}
+
 async function sendFromInput(context){
   const ta = el('ai-text')
   const text = String(ta.value || '').trim()
@@ -1757,29 +1877,34 @@ async function sendFromInput(context){
 
 // 带快捷操作的发送函数
 async function sendFromInputWithAction(context){
+  const pendingAction = __AI_PENDING_ACTION__
+  if (pendingAction) {
+    const ta = el('ai-text')
+    const text = String((ta && ta.value) || '').trim()
+    if (!text) return
+    if (ta) ta.value = ''
+    await handlePendingQuickActionInput(context, pendingAction, text)
+    return
+  }
+
   const actionSelect = el('ai-quick-action')
   const action = actionSelect ? String(actionSelect.value || '').trim() : ''
 
-  // 特殊操作：待办和提醒
   if (action === '待办') {
-    actionSelect.value = '' // 重置选择
-    await generateTodos(context)
+    await promptPendingQuickAction(context, 'todo')
     return
   }
   if (action === '提醒') {
-    actionSelect.value = '' // 重置选择
-    await generateTodosAndPush(context)
+    await promptPendingQuickAction(context, 'reminder')
     return
   }
 
-  // 其他快捷操作（续写、润色、纠错、提纲）或普通问答
   if (action && ['续写', '润色', '纠错', '提纲'].includes(action)) {
     actionSelect.value = '' // 重置选择
     await quick(context, action)
     return
   }
 
-  // 普通问答模式
   await sendFromInput(context)
 }
 

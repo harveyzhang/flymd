@@ -968,13 +968,9 @@ export async function syncNow(reason: SyncReason): Promise<{ uploaded: number; d
           continue
         }
 
-        // **关键优化**：如果本地未变化，但远程变化是基于 mtime 判断的（不可靠）
-        // 那么我们应该信任本地副本，跳过下载，避免误判
-        // 原因：mtime 可能因时钟偏差、元数据更新等改变，但内容实际未变
-        if (!localChanged && remoteChanged && remoteChangeReason === 'mtime-diff') {
-          await syncLog(`[skip-download] ${k} - 本地未变化且远程仅 mtime 不同，跳过下载避免误判`)
-          continue
-        }
+        // 注意：之前这里有一个 skip-download 优化，当本地未变化且远程仅 mtime 变化时跳过下载
+        // 但这个优化有bug：当其他设备上传新内容时，本地确实没变，但远程内容真的变了
+        // 此时不应该跳过下载。因此移除这个优化，改为正常下载后比较内容
 
         // 记录详细判断信息
         if (localChanged || remoteChanged) {

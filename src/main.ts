@@ -3198,6 +3198,8 @@ function refreshTitle() {
   document.title = label
   const osTitle = `${label} - 飞速MarkDown`
   try { void getCurrentWindow().setTitle(osTitle).catch(() => {}) } catch {}
+  // 编辑模式内容变化时尝试刷新大纲
+  try { scheduleOutlineUpdateFromSource() } catch {}
 }
 
 // 更新状态栏（行列字）
@@ -5413,19 +5415,27 @@ function bindPdfOutlineClicks(outlineEl: HTMLDivElement) {
 let _outlineObserverBound = false
 let _outlineObserver: MutationObserver | null = null
 let _outlineUpdateTimer = 0
+function scheduleOutlineUpdate() {
+  if (_outlineUpdateTimer) { clearTimeout(_outlineUpdateTimer); _outlineUpdateTimer = 0 }
+  _outlineUpdateTimer = window.setTimeout(() => {
+    _outlineUpdateTimer = 0
+    try {
+      const outline = document.getElementById('lib-outline') as HTMLDivElement | null
+      if (outline && !outline.classList.contains('hidden')) renderOutlinePanel()
+    } catch {}
+  }, 200)
+}
+function scheduleOutlineUpdateFromSource() {
+  if (wysiwyg || mode !== 'edit') return
+  scheduleOutlineUpdate()
+}
 function ensureOutlineObserverBound() {
   if (_outlineObserverBound) return
   try {
     const bodyEl = document.querySelector('#md-wysiwyg-root .ProseMirror') as HTMLElement | null
     if (!bodyEl) return
     _outlineObserver = new MutationObserver(() => {
-      if (_outlineUpdateTimer) { clearTimeout(_outlineUpdateTimer); _outlineUpdateTimer = 0 }
-      _outlineUpdateTimer = window.setTimeout(() => {
-        try {
-          const outline = document.getElementById('lib-outline') as HTMLDivElement | null
-          if (outline && !outline.classList.contains('hidden')) renderOutlinePanel()
-        } catch {}
-      }, 200)
+      scheduleOutlineUpdate()
     })
     _outlineObserver.observe(bodyEl, { childList: true, subtree: true, characterData: true })
     _outlineObserverBound = true

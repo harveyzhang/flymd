@@ -8682,6 +8682,7 @@ function bindEvents() {
           // 初始化统一的"插件"菜单按钮
           initPluginsMenu()
           await loadAndActivateEnabledPlugins()
+          await ensureCoreExtensionsAfterStartup()
           // 启动后后台检查一次扩展更新（仅提示，不自动更新）
           await checkPluginUpdatesOnStartup()
         } catch (e) {
@@ -9125,6 +9126,79 @@ function startAsyncUploadFromBlob(blob: Blob, fname: string, mime: string): Prom
 // ========= END =========
 
 // ========== 扩展/插件：运行时与 UI ==========
+type CoreExtensionState = 'pending' | 'installed' | 'blocked'
+const CORE_EXT_STATE_KEY = 'coreExtensions:autoInstall'
+const CORE_AI_EXTENSION_ID = 'ai-assistant'
+const CORE_AI_MANIFEST_URL = 'https://raw.githubusercontent.com/flyhunterl/flymd/main/public/plugins/ai-assistant/manifest.json'
+
+async function getCoreExtensionStateMap(): Promise<Record<string, CoreExtensionState>> {
+  try {
+    if (!store) return {}
+    const raw = await store.get(CORE_EXT_STATE_KEY)
+    if (raw && typeof raw === 'object') {
+      const next: Record<string, CoreExtensionState> = {}
+      for (const [key, val] of Object.entries(raw as Record<string, unknown>)) {
+        if (val === 'blocked' || val === 'installed' || val === 'pending') {
+          next[key] = val
+        }
+      }
+      return next
+    }
+  } catch {}
+  return {}
+}
+
+async function setCoreExtensionStateMap(map: Record<string, CoreExtensionState>): Promise<void> {
+  try {
+    if (!store) return
+    await store.set(CORE_EXT_STATE_KEY, map)
+    await store.save()
+  } catch {}
+}
+
+async function getCoreExtensionState(id: string): Promise<CoreExtensionState> {
+  const map = await getCoreExtensionStateMap()
+  return map[id] ?? 'pending'
+}
+
+async function setCoreExtensionState(id: string, state: CoreExtensionState): Promise<void> {
+  try {
+    if (!store) return
+    const map = await getCoreExtensionStateMap()
+    if (map[id] === state) return
+    map[id] = state
+    await setCoreExtensionStateMap(map)
+  } catch {}
+}
+
+async function markCoreExtensionBlocked(id: string): Promise<void> {
+  await setCoreExtensionState(id, 'blocked')
+}
+
+async function ensureCoreExtensionsAfterStartup(): Promise<void> {
+  await ensureAiAssistantAutoInstall()
+}
+
+async function ensureAiAssistantAutoInstall(): Promise<void> {
+  try {
+    if (!store) return
+    const state = await getCoreExtensionState(CORE_AI_EXTENSION_ID)
+    if (state === 'blocked') return
+    const installed = await getInstalledPlugins()
+    if (installed[CORE_AI_EXTENSION_ID]) {
+      if (state !== 'installed') await setCoreExtensionState(CORE_AI_EXTENSION_ID, 'installed')
+      return
+    }
+    await setCoreExtensionState(CORE_AI_EXTENSION_ID, 'pending')
+    const rec = await installPluginFromGit(CORE_AI_MANIFEST_URL)
+    await activatePlugin(rec)
+    await setCoreExtensionState(CORE_AI_EXTENSION_ID, 'installed')
+    try { logInfo('AI 助手扩展已自动安装') } catch {}
+  } catch (error) {
+    console.warn('[CoreExt] 自动安装 AI 助手失败', error)
+  }
+}
+
 async function ensurePluginsDir(): Promise<void> {
   try { await mkdir(PLUGINS_DIR as any, { baseDir: BaseDirectory.AppLocalData, recursive: true } as any) } catch {}
 }
@@ -10073,6 +10147,9 @@ async function refreshExtensionsUI(): Promise<void> {
           await deactivatePlugin(p.id)
           await removeDirRecursive(p.dir)
           delete installedMap[p.id]; await setInstalledPlugins(installedMap)
+          if (p.id === CORE_AI_EXTENSION_ID) {
+            await markCoreExtensionBlocked(p.id)
+          }
           await refreshExtensionsUI(); pluginNotice(t('ext.removed'), 'ok', 1200)
         } catch (e) { showError(t('ext.remove.fail'), e) }
       })

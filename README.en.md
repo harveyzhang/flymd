@@ -56,6 +56,8 @@ Cross-platform support for Windows / Linux / macOS. Lightweight yet powerful, bu
 - **Smart Todo Reminder Push** - Auto-detect TODOs, push via WeChat, SMS, Email, DingTalk, Feishu and more
 - **Flexible iframe Embedding** - Embed music, videos, maps, online documents and more
 
+> 💡 The AI Assistant extension installs silently in the background on first launch. If you uninstall it from the Extensions panel, FlyMD will never auto-install it again.
+
 ### 💻 Platform & Format
 - **Windows / Linux / macOS Cross-Platform Support** - Use anywhere without barriers
 - **Export to PDF and DOCX** - Multiple export formats for different needs

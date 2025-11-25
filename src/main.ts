@@ -669,6 +669,7 @@ let selectedNodeEl: HTMLElement | null = null
 let libraryDocked = true
 type LibrarySide = 'left' | 'right'
 let librarySide: LibrarySide = 'left'
+let libraryVisible = true
 // 非固定模式下：离开侧栏后自动隐藏的延迟定时器
 let _libLeaveTimer: number | null = null
 // 专注模式：隐藏顶栏，鼠标移到顶部边缘时显示
@@ -2781,7 +2782,7 @@ wysiwygCaretEl.id = 'wysiwyg-caret'
     _libEdgeEl.style.pointerEvents = 'auto'
     _libEdgeEl.style.background = 'transparent'
     _libEdgeEl.style.display = 'none'
-    _libEdgeEl.addEventListener('mouseenter', () => { try { if (!libraryDocked) showLibrary(true) } catch {} })
+    _libEdgeEl.addEventListener('mouseenter', () => { try { if (!libraryDocked) showLibrary(true, false) } catch {} })
     containerEl.appendChild(_libEdgeEl)
   } catch {}
   try {
@@ -2838,7 +2839,7 @@ wysiwygCaretEl.id = 'wysiwyg-caret'
     floatToggle.title = '展开侧栏'
     floatToggle.addEventListener('click', () => {
       try {
-        showLibrary(true)
+        showLibrary(true, false)
       } catch {}
     })
     containerEl.appendChild(floatToggle)
@@ -2857,6 +2858,16 @@ wysiwygCaretEl.id = 'wysiwyg-caret'
     })
     observer.observe(library, { attributes: true, attributeFilter: ['class'] })
   } catch {}
+  // 恢复库侧栏上次的可见状态
+  ;(async () => {
+    try {
+      const visible = await getLibraryVisible()
+      libraryVisible = visible
+      showLibrary(visible, false)
+    } catch {
+      showLibrary(libraryVisible, false)
+    }
+  })()
         // 重新创建关于对话框并挂载
         const about = document.createElement('div')
         about.id = 'about-overlay'
@@ -5758,11 +5769,17 @@ function applyLibraryLayout() {
 }
 
 // 库面板显示/隐藏：使用覆盖式抽屉为默认；若开启“固定”，则并排显示
-function showLibrary(show: boolean) {
+function showLibrary(show: boolean, persist = true) {
+  libraryVisible = !!show
   const lib = document.getElementById('library') as HTMLDivElement | null
   if (!lib) return
   lib.classList.toggle('hidden', !show)
   applyLibraryLayout()
+  if (show && !fileTreeReady) {
+    void (async () => {
+      try { await refreshLibraryUiAndTree(true) } catch {}
+    })()
+  }
   // 非固定模式：绑定悬停离开自动隐藏
   if (show && !libraryDocked) {
     try {
@@ -5776,7 +5793,7 @@ function showLibrary(show: boolean) {
             if (rt && lib.contains(rt)) return
             if (_libLeaveTimer != null) { clearTimeout(_libLeaveTimer); _libLeaveTimer = null }
             _libLeaveTimer = window.setTimeout(() => {
-              try { if (!libraryDocked && lib && !lib.matches(':hover')) showLibrary(false) } catch {}
+              try { if (!libraryDocked && lib && !lib.matches(':hover')) showLibrary(false, false) } catch {}
             }, 200)
           } catch {}
         }
@@ -5791,6 +5808,7 @@ function showLibrary(show: boolean) {
     const libVisible = !lib.classList.contains('hidden')
     syncLibraryEdgeState(libVisible)
   } catch {}
+  if (persist) { void persistLibraryVisible() }
 }
 
 async function setLibraryDocked(docked: boolean, persist = true) {
@@ -5805,12 +5823,25 @@ async function setLibraryDocked(docked: boolean, persist = true) {
   // 若当前已显示且切到“非固定”，补绑定悬停自动隐藏
   try {
     const lib = document.getElementById('library') as HTMLDivElement | null
-    if (lib && !lib.classList.contains('hidden') && !libraryDocked) showLibrary(true)
+    if (lib && !lib.classList.contains('hidden') && !libraryDocked) showLibrary(true, false)
   } catch {}
 }
 
 async function getLibraryDocked(): Promise<boolean> {
   try { if (!store) return libraryDocked; const v = await store.get('libraryDocked'); return !!v } catch { return libraryDocked }
+}
+
+async function persistLibraryVisible() {
+  try { if (!store) return; await store.set('libraryVisible', libraryVisible); await store.save() } catch {}
+}
+
+async function getLibraryVisible(): Promise<boolean> {
+  try {
+    if (!store) return libraryVisible
+    const v = await store.get('libraryVisible')
+    if (typeof v === 'boolean') return v
+  } catch {}
+  return true
 }
 
 async function setLibrarySide(side: LibrarySide, persist = true) {
@@ -8033,7 +8064,7 @@ function bindEvents() {
       if (!visible) return
       if (libraryDocked) return // 仅非固定模式
       const t = ev.target as Node
-      if (lib && !lib.contains(t)) showLibrary(false)
+      if (lib && !lib.contains(t)) showLibrary(false, false)
     } catch {}
   }, { capture: true })
   if (btnAbout) btnAbout.addEventListener('click', guard(() => showAbout(true)))

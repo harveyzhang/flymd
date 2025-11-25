@@ -292,9 +292,9 @@ export async function getWebdavSyncConfig(): Promise<WebdavSyncConfig> {
   const store = await getStore()
   const raw = (await store.get('sync')) as any
   const cfg: WebdavSyncConfig = {
-    enabled: raw?.enabled !== false,
-    onStartup: raw?.onStartup !== false,
-    onShutdown: raw?.onShutdown !== false,
+    enabled: raw?.enabled === true,
+    onStartup: raw?.onStartup === true,
+    onShutdown: raw?.onShutdown === true,
     timeoutMs: Number(raw?.timeoutMs) > 0 ? Number(raw?.timeoutMs) : 120000,
     includeGlobs: Array.isArray(raw?.includeGlobs) ? raw.includeGlobs : ['**/*.md', '**/*.{png,jpg,jpeg,gif,svg,pdf}'],
     excludeGlobs: Array.isArray(raw?.excludeGlobs) ? raw.excludeGlobs : ['**/.git/**','**/.trash/**','**/.DS_Store','**/Thumbs.db'],

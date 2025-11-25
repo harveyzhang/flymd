@@ -4529,9 +4529,13 @@ body.focus-mode .library .lib-header {
 body.focus-mode .library .lib-ico,
 body.focus-mode .library .lib-ico-folder,
 body.focus-mode .library .lib-ico-file,
-body.focus-mode .library .lib-ico-app,
-body.focus-mode .library .lib-tg {
+body.focus-mode .library .lib-ico-app {
   display: none !important;
+}
+
+body.focus-mode .library .lib-tg {
+  display: inline-flex !important;
+  opacity: 0.4;
 }
 
 /* 移除悬浮效果 */

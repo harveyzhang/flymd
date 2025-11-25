@@ -8009,26 +8009,8 @@ function bindEvents() {
       const treeEl = document.getElementById('lib-tree') as HTMLDivElement | null; if (treeEl && !fileTreeReady) { await fileTree.init(treeEl, { getRoot: getLibraryRoot, onOpenFile: async (p: string) => { await openFile2(p) }, onOpenNewFile: async (p: string) => { await openFile2(p); mode='edit'; preview.classList.add('hidden'); try { (editor as HTMLTextAreaElement).focus() } catch {} }, onMoved: async (src: string, dst: string) => { try { if (currentFilePath === src) { currentFilePath = dst as any; refreshTitle() } } catch {} } }); fileTreeReady = true } else if (treeEl) { await fileTree.refresh() }
         return
       }
-      if (e.key === 'Delete') {
-        e.preventDefault()
-        console.log('[删除] Delete键被按下, 路径:', p, 'Shift键:', e.shiftKey)
-        const isPermanent = e.shiftKey
-        const ok = await confirmNative(isPermanent ? '确定永久删除所选项？不可恢复' : '确定删除所选项？将移至回收站')
-        console.log('[删除] 用户确认结果:', ok)
-        if (!ok) return
-        console.log('[删除] 开始删除文件:', p, '永久删除:', isPermanent)
-        await deleteFileSafe(p, isPermanent)
-        console.log('[删除] 删除完成')
-        if (currentFilePath === p) {
-          // 清空编辑器和当前文件路径
-          currentFilePath = null as any
-          if (editor) (editor as HTMLTextAreaElement).value = ''
-          if (preview) preview.innerHTML = ''
-          refreshTitle()
-        }
-        const treeEl = document.getElementById('lib-tree') as HTMLDivElement | null; if (treeEl && !fileTreeReady) { await fileTree.init(treeEl, { getRoot: getLibraryRoot, onOpenFile: async (p: string) => { await openFile2(p) }, onOpenNewFile: async (p: string) => { await openFile2(p); mode='edit'; preview.classList.add('hidden'); try { (editor as HTMLTextAreaElement).focus() } catch {} } }); fileTreeReady = true } else if (treeEl) { await fileTree.refresh() }
-        return
-      }
+      // Delete 键删除文件功能已移除，避免干扰编辑器中的文字删除
+      // 用户可以通过右键菜单或其他方式删除文件
     } catch (e) { showError('操作失败', e) }
   }), { capture: true })
   if (btnNew) btnNew.addEventListener('click', guard(async () => {

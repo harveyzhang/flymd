@@ -48,6 +48,11 @@ html, body {
   text-rendering: optimizeLegibility;
 }
 
+/* 通用隐藏类 */
+.hidden {
+  display: none !important;
+}
+
 #app {
   animation: app-fadein 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -2260,7 +2265,7 @@ body.focus-mode .lib-float-toggle.show { display: flex; }
 }
 
 .upl-dialog {
-  width: 650px;
+  width: 680px;
   max-width: calc(100% - 40px);
   background: var(--bg);
   color: var(--fg);
@@ -2286,7 +2291,7 @@ body.focus-mode .lib-float-toggle.show { display: flex; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 18px 24px;
+  padding: 16px 20px;
   border-bottom: 1px solid var(--border);
   font-weight: 600;
   font-size: 15px;
@@ -2316,8 +2321,8 @@ body.focus-mode .lib-float-toggle.show { display: flex; }
 }
 
 .upl-body {
-  padding: 20px 24px 24px;
-  max-height: 70vh;
+  padding: 18px 20px 20px;
+  max-height: 65vh;
   overflow: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(127,127,127,0.3) transparent;
@@ -2329,9 +2334,9 @@ body.focus-mode .lib-float-toggle.show { display: flex; }
 
 .upl-grid {
   display: grid;
-  grid-template-columns: 140px 1fr;
+  grid-template-columns: 130px 1fr;
   align-items: center;
-  gap: 14px 16px;
+  gap: 12px 14px;
 }
 
 .upl-field { display: contents; }
@@ -3348,7 +3353,10 @@ body::-webkit-scrollbar:horizontal,
   margin-top: 4px;
 }
 
-.upl-hint.pad-1ch { padding-left: 1ch; }
+.upl-hint.pad-1ch {
+  padding: 8px 12px;
+  grid-column: 1 / -1;
+}
 
 .upl-grid .sync-toggles {
   grid-column: 1 / -1;

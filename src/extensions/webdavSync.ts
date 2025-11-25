@@ -1501,13 +1501,47 @@ export async function openWebdavSyncDialog(): Promise<void> {
           <div id="sync-title">${t('sync.title')}</div>
           <button id="sync-close" class="about-close" title="${t('about.close')}">×</button>
         </div>
-        <div class="upl-desc">${t('sync.desc')}</div>
-        <div class="upl-hint warn pad-1ch" style="margin-top: 8px; margin-bottom: 8px;">
-          ${t('sync.warn.global')}
-        </div>
         <form class="upl-body" id="sync-form">
           <div class="upl-grid">
-            <div class="upl-section-title">${t('sync.section.basic')}</div>\n            <div class="sync-toggles">\n              <div class="item">\n                <span class="lbl">${t('sync.enable')}</span>\n                <label class=\"switch\" for=\"sync-enabled\">\n                  <input id=\"sync-enabled\" type=\"checkbox\"/>\n                  <span class=\"trk\"></span><span class=\"kn\"></span>\n                </label>\n              </div>\n              <div class=\"item\">\n                <span class=\"lbl\">${t('sync.onstartup')}</span>\n                <label class=\"switch\" for=\"sync-onstartup\">\n                  <input id=\"sync-onstartup\" type=\"checkbox\"/>\n                  <span class=\"trk\"></span><span class=\"kn\"></span>\n                </label>\n              </div>\n              <div class=\"item\">\n                <span class=\"lbl\">${t('sync.onshutdown')}</span>\n                <label class=\"switch\" for=\"sync-onshutdown\">\n                  <input id=\"sync-onshutdown\" type=\"checkbox\"/>\n                  <span class=\"trk\"></span><span class=\"kn\"></span>\n                </label>\n              </div>\n              <div class=\"upl-hint warn pad-1ch\" style=\"white-space: nowrap;\">\n                ${t('sync.warn.onshutdown')}\n              </div>\n              <div class=\"item\">\n                <span class=\"lbl\">${t('sync.allowHttp')}</span>\n                <label class=\"switch\" for=\"sync-allow-http\">\n                  <input id=\"sync-allow-http\" type=\"checkbox\"/>\n                  <span class=\"trk\"></span><span class=\"kn\"></span>\n                </label>\n              </div>\n              <div class=\"upl-hint warn pad-1ch sync-http-warn hidden\">\n                ${t('sync.allowHttp.warn')}\n              </div>\n            </div>\n<label for=\"sync-timeout\">${t('sync.timeout.label')}<\/label>
+            <div class="upl-section-title">${t('sync.section.basic')}</div>
+            <div class="sync-toggles">
+              <div class="item">
+                <span class="lbl">${t('sync.enable')}</span>
+                <label class="switch" for="sync-enabled">
+                  <input id="sync-enabled" type="checkbox"/>
+                  <span class="trk"></span><span class="kn"></span>
+                </label>
+              </div>
+              <div class="item">
+                <span class="lbl">${t('sync.onstartup')}</span>
+                <label class="switch" for="sync-onstartup">
+                  <input id="sync-onstartup" type="checkbox"/>
+                  <span class="trk"></span><span class="kn"></span>
+                </label>
+              </div>
+              <div class="item">
+                <span class="lbl">${t('sync.onshutdown')}</span>
+                <label class="switch" for="sync-onshutdown">
+                  <input id="sync-onshutdown" type="checkbox"/>
+                  <span class="trk"></span><span class="kn"></span>
+                </label>
+              </div>
+              <div class="item">
+                <span class="lbl">${t('sync.allowHttp')}</span>
+                <label class="switch" for="sync-allow-http">
+                  <input id="sync-allow-http" type="checkbox"/>
+                  <span class="trk"></span><span class="kn"></span>
+                </label>
+              </div>
+            </div>
+            <div class="upl-hint warn pad-1ch sync-shutdown-warn hidden" style="margin-top: 8px;">
+              ${t('sync.warn.onshutdown')}
+            </div>
+            <div class="upl-hint warn pad-1ch sync-http-warn hidden" style="margin-top: 6px;">
+              ${t('sync.allowHttp.warn')}
+            </div>
+
+            <label for="sync-timeout">${t('sync.timeout.label')}</label>
             <div class="upl-field">
               <input id="sync-timeout" type="number" min="1000" step="1000" placeholder="120000"/>
               <div class="upl-hint">${t('sync.timeout.suggest')}</div>
@@ -1608,6 +1642,7 @@ export async function openWebdavSyncDialog(): Promise<void> {
   const elPass = overlay.querySelector('#sync-pass') as HTMLInputElement
   const elAllowHttp = overlay.querySelector('#sync-allow-http') as HTMLInputElement
   const elAllowHttpWarn = overlay.querySelector('.sync-http-warn') as HTMLDivElement | null
+  const elShutdownWarn = overlay.querySelector('.sync-shutdown-warn') as HTMLDivElement | null
 
   const cfg = await getWebdavSyncConfig()
   elEnabled.checked = !!cfg.enabled
@@ -1631,6 +1666,14 @@ export async function openWebdavSyncDialog(): Promise<void> {
   }
   refreshAllowHttpWarn()
   elAllowHttp.addEventListener('change', refreshAllowHttpWarn)
+
+  const refreshShutdownWarn = () => {
+    if (!elShutdownWarn) return
+    if (elOnShutdown.checked) elShutdownWarn.classList.remove('hidden')
+    else elShutdownWarn.classList.add('hidden')
+  }
+  refreshShutdownWarn()
+  elOnShutdown.addEventListener('change', refreshShutdownWarn)
 
   const onSubmit = async (e: Event) => {
     e.preventDefault()

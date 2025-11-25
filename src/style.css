@@ -617,9 +617,11 @@ html, body {
 /* 所见模式覆盖渲染容器：在 ProseMirror 之上渲染 Mermaid/KaTeX 预览 */
 #md-wysiwyg-root .overlay-host { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
 #md-wysiwyg-root .overlay-host .ov-mermaid,
-#md-wysiwyg-root .overlay-host .ov-katex { pointer-events: none; }
+#md-wysiwyg-root .overlay-host .ov-katex,
+#md-wysiwyg-root .overlay-host .ov-codecopy { pointer-events: none; }
 #md-wysiwyg-root .overlay-host .ov-mermaid > div,
-#md-wysiwyg-root .overlay-host .ov-katex > div { pointer-events: auto; }
+#md-wysiwyg-root .overlay-host .ov-katex > div,
+#md-wysiwyg-root .overlay-host .ov-codecopy > .code-copy { pointer-events: auto; }
 /* 保证所见 V2 的滚动容器占满并可滚动 */
 #md-wysiwyg-root .scrollView { height: 100%; overflow-y: auto; }
 /* 兜底：Milkdown 根容器（通常为 .milkdown）与其第一级子元素占满高度 */
@@ -3138,7 +3140,8 @@ html, body { overflow: hidden; }
   letter-spacing: 0.05em;
   backdrop-filter: blur(4px);
 }
-.codebox .code-copy {
+.codebox .code-copy,
+#md-wysiwyg-root .overlay-host .ov-codecopy .code-copy {
   position: absolute;
   top: 14px;
   right: 16px;
@@ -3153,11 +3156,17 @@ html, body { overflow: hidden; }
   transition: all 0.2s ease;
   backdrop-filter: blur(4px);
 }
-.codebox .code-copy:hover {
+.codebox .code-copy:hover,
+#md-wysiwyg-root .overlay-host .ov-codecopy .code-copy:hover {
   background: rgba(127,127,127,0.18);
   border-color: var(--fg);
   transform: translateY(-1px);
   box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+#md-wysiwyg-root .overlay-host .ov-codecopy .code-copy {
+  position: static;
+  top: auto;
+  right: auto;
 }
 .codebox pre { margin: 0; position: relative; /* 让行号层可绝对定位 */   padding-top: calc(var(--code-pre-pad-y, 20px) + var(--code-lang-gap)); /* 给语言角标让位 */
 }

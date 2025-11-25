@@ -757,6 +757,7 @@ let _pluginsMenuBtn: HTMLDivElement | null = null // "插件"菜单按钮
 const pluginContextMenuItems: PluginContextMenuItem[] = [] // 所有插件注册的右键菜单项
 let _contextMenuEl: HTMLDivElement | null = null // 当前显示的右键菜单元素
 let _contextMenuKeyHandler: ((e: KeyboardEvent) => void) | null = null
+let _libCtxKeyHandler: ((e: KeyboardEvent) => void) | null = null // 文件树右键菜单的键盘事件处理器
 
 async function readUploaderEnabledState(): Promise<boolean> {
   try {
@@ -7768,7 +7769,14 @@ function bindEvents() {
       a.addEventListener('click', () => { act(); hide() })
       return a
     }
-    const hide = () => { if (menu) { menu.style.display = 'none' } document.removeEventListener('click', onDoc) }
+    const hide = () => {
+      if (menu) { menu.style.display = 'none' }
+      document.removeEventListener('click', onDoc)
+      if (_libCtxKeyHandler) {
+        document.removeEventListener('keydown', _libCtxKeyHandler)
+        _libCtxKeyHandler = null
+      }
+    }
     const onDoc = () => hide()
     menu.innerHTML = ''
     if (isDir) {
@@ -7851,8 +7859,12 @@ function bindEvents() {
         else if (treeEl) { await fileTree.refresh() }
       } catch (e) { showError('移动失败', e) }
     }))
-    menu.appendChild(mkItem(t('ctx.rename'), async () => { try { const base = path.replace(/[\\/][^\\/]*$/, ''); const oldFull = path.split(/[\\/]+/).pop() || ''; const m = oldFull.match(/^(.*?)(\.[^.]+)?$/); const oldStem = (m?.[1] || oldFull); const oldExt = (m?.[2] || ''); const newStem = await openRenameDialog(oldStem, oldExt); if (!newStem || newStem === oldStem) return; const name = newStem + oldExt; const dst = base + (base.includes('\\') ? '\\' : '/') + name; if (await exists(dst)) { alert('同名已存在'); return } await moveFileSafe(path, dst); if (currentFilePath === path) { currentFilePath = dst as any; refreshTitle() } const treeEl = document.getElementById('lib-tree') as HTMLDivElement | null; if (treeEl && !fileTreeReady) { await fileTree.init(treeEl, { getRoot: getLibraryRoot, onOpenFile: async (p: string) => { await openFile2(p) }, onOpenNewFile: async (p: string) => { await openFile2(p); mode='edit'; preview.classList.add('hidden'); try { (editor as HTMLTextAreaElement).focus() } catch {} }, onMoved: async (src: string, dst: string) => { try { if (currentFilePath === src) { currentFilePath = dst as any; refreshTitle() } } catch {} } }); fileTreeReady = true } else if (treeEl) { await fileTree.refresh() }; try { const nodes = Array.from((document.getElementById('lib-tree')||document.body).querySelectorAll('.lib-node') as any) as HTMLElement[]; const node = nodes.find(n => (n as any).dataset?.path === dst); if (node) node.dispatchEvent(new MouseEvent('click', { bubbles: true })) } catch {} } catch (e) { showError('重命名失败', e) } }))
-    menu.appendChild(mkItem(t('ctx.delete'), async () => { try { console.log('[删除] 右键菜单删除, 路径:', path); const confirmMsg = isDir ? '确定删除该文件夹及其所有内容？将移至回收站' : '确定删除该文件？将移至回收站'; const ok = await confirmNative(confirmMsg); console.log('[删除] 用户确认结果:', ok); if (!ok) return; console.log('[删除] 开始删除', isDir ? '文件夹' : '文件'); await deleteFileSafe(path, false); console.log('[删除] 删除完成'); if (currentFilePath === path) { currentFilePath = null as any; if (editor) (editor as HTMLTextAreaElement).value = ''; if (preview) preview.innerHTML = ''; refreshTitle() } const treeEl = document.getElementById('lib-tree') as HTMLDivElement | null; if (treeEl && !fileTreeReady) { await fileTree.init(treeEl, { getRoot: getLibraryRoot, onOpenFile: async (p: string) => { await openFile2(p) }, onOpenNewFile: async (p: string) => { await openFile2(p); mode='edit'; preview.classList.add('hidden'); try { (editor as HTMLTextAreaElement).focus() } catch {} }, onMoved: async (src: string, dst: string) => { try { if (currentFilePath === src) { currentFilePath = dst as any; refreshTitle() } } catch {} } }); fileTreeReady = true } else if (treeEl) { await fileTree.refresh() } } catch (e) { showError('删除失败', e) } }))
+    // 重命名操作
+    const doRename = async () => { try { const base = path.replace(/[\\/][^\\/]*$/, ''); const oldFull = path.split(/[\\/]+/).pop() || ''; const m = oldFull.match(/^(.*?)(\.[^.]+)?$/); const oldStem = (m?.[1] || oldFull); const oldExt = (m?.[2] || ''); const newStem = await openRenameDialog(oldStem, oldExt); if (!newStem || newStem === oldStem) return; const name = newStem + oldExt; const dst = base + (base.includes('\\') ? '\\' : '/') + name; if (await exists(dst)) { alert('同名已存在'); return } await moveFileSafe(path, dst); if (currentFilePath === path) { currentFilePath = dst as any; refreshTitle() } const treeEl = document.getElementById('lib-tree') as HTMLDivElement | null; if (treeEl && !fileTreeReady) { await fileTree.init(treeEl, { getRoot: getLibraryRoot, onOpenFile: async (p: string) => { await openFile2(p) }, onOpenNewFile: async (p: string) => { await openFile2(p); mode='edit'; preview.classList.add('hidden'); try { (editor as HTMLTextAreaElement).focus() } catch {} }, onMoved: async (src: string, dst: string) => { try { if (currentFilePath === src) { currentFilePath = dst as any; refreshTitle() } } catch {} } }); fileTreeReady = true } else if (treeEl) { await fileTree.refresh() }; try { const nodes = Array.from((document.getElementById('lib-tree')||document.body).querySelectorAll('.lib-node') as any) as HTMLElement[]; const node = nodes.find(n => (n as any).dataset?.path === dst); if (node) node.dispatchEvent(new MouseEvent('click', { bubbles: true })) } catch {} } catch (e) { showError('重命名失败', e) } }
+    // 删除操作
+    const doDelete = async () => { try { console.log('[删除] 右键菜单删除, 路径:', path); const confirmMsg = isDir ? '确定删除该文件夹及其所有内容？将移至回收站' : '确定删除该文件？将移至回收站'; const ok = await confirmNative(confirmMsg); console.log('[删除] 用户确认结果:', ok); if (!ok) return; console.log('[删除] 开始删除', isDir ? '文件夹' : '文件'); await deleteFileSafe(path, false); console.log('[删除] 删除完成'); if (currentFilePath === path) { currentFilePath = null as any; if (editor) (editor as HTMLTextAreaElement).value = ''; if (preview) preview.innerHTML = ''; refreshTitle() } const treeEl = document.getElementById('lib-tree') as HTMLDivElement | null; if (treeEl && !fileTreeReady) { await fileTree.init(treeEl, { getRoot: getLibraryRoot, onOpenFile: async (p: string) => { await openFile2(p) }, onOpenNewFile: async (p: string) => { await openFile2(p); mode='edit'; preview.classList.add('hidden'); try { (editor as HTMLTextAreaElement).focus() } catch {} }, onMoved: async (src: string, dst: string) => { try { if (currentFilePath === src) { currentFilePath = dst as any; refreshTitle() } } catch {} } }); fileTreeReady = true } else if (treeEl) { await fileTree.refresh() } } catch (e) { showError('删除失败', e) } }
+    menu.appendChild(mkItem(t('ctx.rename'), doRename))
+    menu.appendChild(mkItem(t('ctx.delete'), doDelete))
 
     // 排列方式（名称/修改时间）
     try {
@@ -7874,15 +7886,39 @@ function bindEvents() {
     menu.style.top = Math.min(ev.clientY, (window.innerHeight - 120)) + 'px'
     menu.style.display = 'block'
     setTimeout(() => document.addEventListener('click', onDoc, { once: true }), 0)
+
+    // 添加键盘快捷键支持：M 键重命名，D 键删除
+    _libCtxKeyHandler = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === 'm') {
+        e.preventDefault()
+        hide()
+        void doRename()
+      } else if (e.key.toLowerCase() === 'd') {
+        e.preventDefault()
+        hide()
+        void doDelete()
+      }
+    }
+    document.addEventListener('keydown', _libCtxKeyHandler)
   })
   // 所见模式：右键打印（已去除，根据用户反馈移除该菜单）
   document.addEventListener('click', async (ev) => {
     const t = ev?.target as HTMLElement
     if (t && t.classList.contains('code-copy')) {
       ev.preventDefault()
-      const box = t.closest('.codebox') as HTMLElement | null
-      const pre = box?.querySelector('pre') as HTMLElement | null
-      const text = pre ? (pre.textContent || '') : ''
+      let text: string | null = null
+      const direct = (t as any).__copyText
+      if (typeof direct === 'string') text = direct
+      if (text == null) {
+        const box = t.closest('.codebox') as HTMLElement | null
+        let pre = box?.querySelector('pre') as HTMLElement | null
+        if (!pre) {
+          const id = t.getAttribute('data-copy-target')
+          if (id) { pre = document.querySelector(`pre[data-code-copy-id="${id}"]`) as HTMLElement | null }
+        }
+        text = pre ? (pre.textContent || '') : ''
+      }
+      text = text || ''
       let ok = false
       try { await navigator.clipboard.writeText(text); ok = true } catch {}
       if (!ok) {

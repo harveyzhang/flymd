@@ -36,6 +36,13 @@ let _activeMermaidPreBySelection: HTMLElement | null = null
 let _activeMermaidPreByMouse: HTMLElement | null = null
 // MutationObserver 用于监听 ProseMirror 清除我们插入的元素
 let _mermaidObserver: MutationObserver | null = null
+// 所见模式代码块复制按钮覆盖层
+const _codeCopyWraps = new Map<HTMLElement, HTMLDivElement>()
+let _codeCopyRaf: number | null = null
+let _codeCopyHost: HTMLElement | null = null
+let _codeCopyScrollHandler: (() => void) | null = null
+let _codeCopyResizeObserver: ResizeObserver | null = null
+let _codeCopyWindowResizeHandler: (() => void) | null = null
 
 function toLocalAbsFromSrc(src: string): string | null {
   try {
@@ -163,8 +170,11 @@ function rewriteLocalImagesToAsset() {
     })
     _imgObserver.observe(host, { subtree: true, attributes: true, attributeFilter: ['src'], childList: true })
   } catch {}
-}function cleanupEditorOnly() {
+}
+
+function cleanupEditorOnly() {
   try { if (_imgObserver) { _imgObserver.disconnect(); _imgObserver = null } } catch {}
+  try { cleanupCodeCopyOverlay() } catch {}
   if (_editor) {
     try { _editor.destroy() } catch {}
     _editor = null
@@ -247,6 +257,7 @@ export async function enableWysiwygV2(root: HTMLElement, initialMd: string, onCh
   const hit = t?.closest?.("div[data-type='math_block']") || t?.closest?.("span[data-type='math_inline']");
   if (hit) { ev.stopPropagation(); try { enterLatexSourceEdit(hit as HTMLElement) } catch {} }
 }, true) } catch {} 
+      try { setupCodeCopyOverlay(pm) } catch {}
     }
     const host = _root?.firstElementChild as HTMLElement | null
     if (host) {
@@ -290,6 +301,7 @@ export async function enableWysiwygV2(root: HTMLElement, initialMd: string, onCh
       _lastMd = md2
       try { _onChange?.(md2) } catch {}
       try { setTimeout(() => { try { rewriteLocalImagesToAsset() } catch {} }, 0) } catch {}
+      try { scheduleCodeCopyRefresh() } catch {}
       // Markdown 更新时，也刷新 Mermaid 渲染 - 已由 Milkdown 插件处理
       // scheduleMermaidRender()
     })
@@ -304,6 +316,7 @@ export async function disableWysiwygV2() {  try {
     }
   } catch {}
   try { if (_imgObserver) { _imgObserver.disconnect(); _imgObserver = null } } catch {}
+  try { cleanupCodeCopyOverlay() } catch {}
   try { if (_overlayHost && _overlayHost.parentElement) { _overlayHost.parentElement.removeChild(_overlayHost); _overlayHost = null } } catch {}
   if (_editor) {
     try { await _editor.destroy() } catch {}
@@ -495,6 +508,139 @@ function ensureOverlayHost(): HTMLDivElement | null {
     _overlayHost = ov
     return ov
   } catch { return null }
+}
+
+function scheduleCodeCopyRefresh() {
+  try {
+    if (_codeCopyRaf != null) return
+    _codeCopyRaf = window.requestAnimationFrame(() => {
+      _codeCopyRaf = null
+      try { refreshCodeCopyButtonsNow() } catch {}
+    })
+  } catch {}
+}
+
+function cleanupCodeCopyOverlay() {
+  try {
+    if (_codeCopyHost && _codeCopyScrollHandler) { _codeCopyHost.removeEventListener('scroll', _codeCopyScrollHandler) }
+  } catch {}
+  _codeCopyScrollHandler = null
+  _codeCopyHost = null
+  try {
+    if (_codeCopyResizeObserver) { _codeCopyResizeObserver.disconnect(); _codeCopyResizeObserver = null }
+  } catch {}
+  if (_codeCopyWindowResizeHandler) {
+    try { window.removeEventListener('resize', _codeCopyWindowResizeHandler) } catch {}
+    _codeCopyWindowResizeHandler = null
+  }
+  if (_codeCopyRaf != null) {
+    try { cancelAnimationFrame(_codeCopyRaf) } catch {}
+    _codeCopyRaf = null
+  }
+  for (const wrap of _codeCopyWraps.values()) {
+    try { wrap.remove() } catch {}
+  }
+  _codeCopyWraps.clear()
+}
+
+function setupCodeCopyOverlay(host: HTMLElement | null) {
+  cleanupCodeCopyOverlay()
+  if (!host) return
+  _codeCopyHost = host
+  const onScroll = () => { scheduleCodeCopyRefresh() }
+  _codeCopyScrollHandler = onScroll
+  try { host.addEventListener('scroll', onScroll, { passive: true }) } catch { try { host.addEventListener('scroll', onScroll) } catch {} }
+  if (typeof ResizeObserver !== 'undefined') {
+    try {
+      _codeCopyResizeObserver = new ResizeObserver(() => { scheduleCodeCopyRefresh() })
+      _codeCopyResizeObserver.observe(host)
+    } catch {}
+  }
+  const onResize = () => { scheduleCodeCopyRefresh() }
+  _codeCopyWindowResizeHandler = onResize
+  window.addEventListener('resize', onResize)
+  scheduleCodeCopyRefresh()
+}
+
+function ensureCodeCopyId(pre: HTMLElement): string {
+  const exist = pre.getAttribute('data-code-copy-id')
+  if (exist) return exist
+  const id = 'cc-' + Math.random().toString(36).slice(2, 10)
+  pre.setAttribute('data-code-copy-id', id)
+  return id
+}
+
+function getCodeCopyText(pre: HTMLElement): string | null {
+  if (!pre || !pre.isConnected) return null
+  if (!pre.offsetParent) return null
+  if (pre.closest('.mermaid-node-wrapper')) return null
+  const codeEl = pre.querySelector('code') as HTMLElement | null
+  if (!codeEl) return null
+  const raw = codeEl.textContent || ''
+  if (!raw.trim()) return null
+  return raw
+}
+
+function positionCodeCopyWrap(pre: HTMLElement, wrap: HTMLDivElement, rootRc: DOMRect) {
+  try {
+    const preRc = pre.getBoundingClientRect()
+    const btn = wrap.querySelector('button.code-copy') as HTMLButtonElement | null
+    const btnRc = btn ? btn.getBoundingClientRect() : wrap.getBoundingClientRect()
+    const btnW = btnRc.width || btn?.offsetWidth || wrap.offsetWidth || 0
+    const left = Math.max(0, (preRc.left - rootRc.left) + Math.max(0, preRc.width - btnW - 16))
+    const top = Math.max(0, (preRc.top - rootRc.top) + 14)
+    wrap.style.left = left + 'px'
+    wrap.style.top = top + 'px'
+  } catch {}
+}
+
+function refreshCodeCopyButtonsNow() {
+  try {
+    const host = getHost()
+    const root = _root as HTMLElement | null
+    const ov = ensureOverlayHost()
+    if (!host || !root || !ov) return
+    const rootRc = root.getBoundingClientRect()
+    const pres = Array.from(host.querySelectorAll('pre')) as HTMLElement[]
+    const alive = new Set<HTMLElement>()
+    for (const pre of pres) {
+      const copyText = getCodeCopyText(pre)
+      if (copyText == null) continue
+      alive.add(pre)
+      const id = ensureCodeCopyId(pre)
+      let wrap = _codeCopyWraps.get(pre)
+      if (!wrap || !wrap.parentElement) {
+        wrap = document.createElement('div')
+        wrap.className = 'ov-codecopy'
+        wrap.style.position = 'absolute'
+        wrap.style.pointerEvents = 'none'
+        wrap.style.zIndex = '8'
+        const btn = document.createElement('button')
+        btn.type = 'button'
+        btn.className = 'code-copy'
+        btn.textContent = '复制'
+        btn.dataset.copyTarget = id
+        btn.style.pointerEvents = 'auto'
+        ;(btn as any).__copyText = copyText
+        wrap.appendChild(btn)
+        ov.appendChild(wrap)
+        _codeCopyWraps.set(pre, wrap)
+      } else {
+        const btn = wrap.querySelector('button.code-copy') as HTMLButtonElement | null
+        if (btn) {
+          if (btn.dataset.copyTarget !== id) btn.dataset.copyTarget = id
+          ;(btn as any).__copyText = copyText
+        }
+      }
+      positionCodeCopyWrap(pre, wrap, rootRc)
+    }
+    for (const [pre, wrap] of Array.from(_codeCopyWraps.entries())) {
+      if (!alive.has(pre) || !pre.isConnected) {
+        try { wrap.remove() } catch {}
+        _codeCopyWraps.delete(pre)
+      }
+    }
+  } catch {}
 }
 
 async function renderMermaidInto(el: HTMLDivElement, code: string) {

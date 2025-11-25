@@ -29,6 +29,140 @@ function getFlymd(): any {
 }
 
 /**
+ * 显示三按钮关闭确认对话框
+ * 返回: 'save' | 'discard' | 'cancel'
+ */
+function showCloseConfirmDialog(fileName: string): Promise<'save' | 'discard' | 'cancel'> {
+  return new Promise((resolve) => {
+    // 创建遮罩层
+    const overlay = document.createElement('div')
+    overlay.className = 'tab-close-dialog-overlay'
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+    `
+
+    // 创建对话框
+    const dialog = document.createElement('div')
+    dialog.className = 'tab-close-dialog'
+    dialog.style.cssText = `
+      background: var(--bg-color, #fff);
+      border-radius: 8px;
+      padding: 20px;
+      min-width: 360px;
+      max-width: 480px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      color: var(--text-color, #333);
+    `
+
+    // 标题
+    const title = document.createElement('div')
+    title.style.cssText = `
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 12px;
+    `
+    title.textContent = '关闭标签'
+
+    // 消息
+    const message = document.createElement('div')
+    message.style.cssText = `
+      font-size: 14px;
+      margin-bottom: 20px;
+      line-height: 1.5;
+    `
+    message.textContent = `"${fileName}" 有未保存的更改。`
+
+    // 按钮容器
+    const buttons = document.createElement('div')
+    buttons.style.cssText = `
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    `
+
+    const buttonStyle = `
+      padding: 8px 16px;
+      border-radius: 4px;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background 0.2s;
+    `
+
+    // 取消按钮
+    const cancelBtn = document.createElement('button')
+    cancelBtn.textContent = '取消'
+    cancelBtn.style.cssText = buttonStyle + `
+      background: var(--button-bg, #e0e0e0);
+      color: var(--text-color, #333);
+    `
+    cancelBtn.onmouseenter = () => { cancelBtn.style.background = 'var(--button-hover-bg, #d0d0d0)' }
+    cancelBtn.onmouseleave = () => { cancelBtn.style.background = 'var(--button-bg, #e0e0e0)' }
+
+    // 不保存按钮
+    const discardBtn = document.createElement('button')
+    discardBtn.textContent = '不保存'
+    discardBtn.style.cssText = buttonStyle + `
+      background: var(--danger-bg, #ff5252);
+      color: white;
+    `
+    discardBtn.onmouseenter = () => { discardBtn.style.background = 'var(--danger-hover-bg, #ff1744)' }
+    discardBtn.onmouseleave = () => { discardBtn.style.background = 'var(--danger-bg, #ff5252)' }
+
+    // 保存并关闭按钮
+    const saveBtn = document.createElement('button')
+    saveBtn.textContent = '保存并关闭'
+    saveBtn.style.cssText = buttonStyle + `
+      background: var(--primary-color, #1976d2);
+      color: white;
+    `
+    saveBtn.onmouseenter = () => { saveBtn.style.background = 'var(--primary-hover, #1565c0)' }
+    saveBtn.onmouseleave = () => { saveBtn.style.background = 'var(--primary-color, #1976d2)' }
+
+    // 关闭对话框
+    const closeDialog = (result: 'save' | 'discard' | 'cancel') => {
+      overlay.remove()
+      resolve(result)
+    }
+
+    cancelBtn.onclick = () => closeDialog('cancel')
+    discardBtn.onclick = () => closeDialog('discard')
+    saveBtn.onclick = () => closeDialog('save')
+
+    // ESC 键取消
+    const handleKeydown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeDialog('cancel')
+        document.removeEventListener('keydown', handleKeydown)
+      }
+    }
+    document.addEventListener('keydown', handleKeydown)
+
+    buttons.appendChild(cancelBtn)
+    buttons.appendChild(discardBtn)
+    buttons.appendChild(saveBtn)
+
+    dialog.appendChild(title)
+    dialog.appendChild(message)
+    dialog.appendChild(buttons)
+    overlay.appendChild(dialog)
+    document.body.appendChild(overlay)
+
+    // 自动聚焦保存按钮
+    saveBtn.focus()
+  })
+}
+
+/**
  * 初始化标签系统
  * 在 DOM 就绪后调用
  */
@@ -66,12 +200,31 @@ export async function initTabSystem(): Promise<void> {
     tabManager,
     onBeforeClose: async (tab) => {
       if (!tab.dirty) return true
-      // 使用原生确认对话框
-      const confirmNative = getFlymd().flymdConfirmNative
-      if (confirmNative) {
-        return await confirmNative(`"${tab.filePath || '未命名'}" 有未保存的更改，是否放弃？`, '关闭标签')
+
+      // 获取文件名用于显示
+      const fileName = tab.filePath
+        ? tab.filePath.replace(/\\/g, '/').split('/').pop() || '未命名'
+        : '未命名'
+
+      // 显示三按钮对话框
+      const result = await showCloseConfirmDialog(fileName)
+
+      if (result === 'cancel') {
+        return false // 取消关闭
       }
-      return confirm(`"${tab.filePath || '未命名'}" 有未保存的更改，是否放弃？`)
+
+      if (result === 'save') {
+        // 先切换到该标签
+        await tabManager.switchToTab(tab.id)
+        // 保存文件
+        const flymd = getFlymd()
+        if (flymd.flymdSaveFile) {
+          await flymd.flymdSaveFile()
+        }
+      }
+
+      // 'save' 或 'discard' 都允许关闭
+      return true
     }
   })
   tabBar.init()
@@ -81,6 +234,9 @@ export async function initTabSystem(): Promise<void> {
   hookNewFile()
   hookSaveFile()
   hookKeyboardShortcuts()
+
+  // 监听编辑器变化，同步 dirty 状态
+  setupDirtySync()
 
   // 启动文件路径同步监听（处理直接调用 openFile2 的情况）
   startPathSyncWatcher()
@@ -393,12 +549,24 @@ function hookKeyboardShortcuts(): void {
  * 监听编辑器变化，同步 dirty 状态到标签
  */
 function setupDirtySync(): void {
-  const editor = document.getElementById('editor') as HTMLTextAreaElement
-  if (!editor) return
+  const flymd = getFlymd()
 
-  editor.addEventListener('input', () => {
-    tabManager.markCurrentTabDirty()
-  })
+  // 监听编辑模式的输入
+  const editor = document.getElementById('editor') as HTMLTextAreaElement
+  if (editor) {
+    editor.addEventListener('input', () => {
+      tabManager.markCurrentTabDirty()
+    })
+  }
+
+  // 定期同步 main.ts 的 dirty 状态到当前标签（处理所见模式等情况）
+  setInterval(() => {
+    const mainDirty = flymd.flymdIsDirty?.() ?? false
+    const currentTab = tabManager.getActiveTab()
+    if (currentTab && mainDirty && !currentTab.dirty) {
+      tabManager.markCurrentTabDirty()
+    }
+  }, 200)
 }
 
 /**

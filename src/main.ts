@@ -742,10 +742,127 @@ const CONFIG_BACKUP_FILE_EXT = 'flymdconfig'
 const BACKUP_PREFIX_APPDATA = 'appdata'
 const BACKUP_PREFIX_APPLOCAL = 'applocal'
 const APP_LOCAL_EXCLUDE_ROOTS = ['EBWebView']
+const PORTABLE_BACKUP_FILENAME = 'flymd-portable.flymdconfig'
+
+function getPortableBaseDir(): BaseDirectory {
+  const anyBase = BaseDirectory as any
+  return anyBase?.App ?? anyBase?.Resource ?? BaseDirectory.AppLocalData
+}
+
+let _portableDirAbs: string | null | undefined
+async function getPortableDirAbsolute(): Promise<string | null> {
+  if (typeof _portableDirAbs !== 'undefined') return _portableDirAbs
+  try {
+    const mod: any = await import('@tauri-apps/api/path')
+    if (mod?.executableDir) {
+      const dir = await mod.executableDir()
+      if (dir && typeof dir === 'string') {
+        _portableDirAbs = dir.replace(/[\\/]+$/, '')
+        return _portableDirAbs
+      }
+    }
+  } catch {}
+  _portableDirAbs = null
+  return _portableDirAbs
+}
+
+function joinPortableFile(dir: string | null): string | null {
+  if (!dir) return null
+  const sep = dir.includes('\\') ? '\\' : '/'
+  return dir + sep + PORTABLE_BACKUP_FILENAME
+}
 
 type ConfigBackupEntry = { path: string; data: string; size: number }
 type ConfigBackupPayload = { version: number; exportedAt: string; files: ConfigBackupEntry[] }
 type BackupPathInfo = { baseDir: BaseDirectory; relPath: string }
+
+async function isPortableModeEnabled(): Promise<boolean> {
+  try {
+    if (!store) return false
+    const raw = await store.get('portableMode')
+    return !!(raw as any)?.enabled
+  } catch {
+    return false
+  }
+}
+
+async function setPortableModeEnabled(next: boolean): Promise<void> {
+  try {
+    if (!store) return
+    const raw = ((await store.get('portableMode')) as any) || {}
+    raw.enabled = next
+    await store.set('portableMode', raw)
+    await store.save()
+  } catch {}
+}
+
+async function exportPortableBackupSilent(): Promise<boolean> {
+  try {
+    const { files } = await collectConfigBackupFiles()
+    if (!files.length) return false
+    const payload: ConfigBackupPayload = {
+      version: CONFIG_BACKUP_VERSION,
+      exportedAt: new Date().toISOString(),
+      files
+    }
+    const absDir = await getPortableDirAbsolute()
+    const targetAbs = joinPortableFile(absDir)
+    if (targetAbs) {
+      await writeTextFile(targetAbs as any, JSON.stringify(payload))
+    } else {
+      await writeTextFile(PORTABLE_BACKUP_FILENAME as any, JSON.stringify(payload), { baseDir: getPortableBaseDir() } as any)
+    }
+    return true
+  } catch (err) {
+    console.warn('[Portable] 导出失败', err)
+    return false
+  }
+}
+
+async function importPortableBackupSilent(): Promise<boolean> {
+  try {
+    let text: string | null = null
+    const absDir = await getPortableDirAbsolute()
+    const targetAbs = joinPortableFile(absDir)
+    if (targetAbs) {
+      const absExists = await exists(targetAbs as any)
+      if (absExists) {
+        text = await readTextFile(targetAbs as any)
+      }
+    }
+    if (!text) {
+      const existsFile = await exists(PORTABLE_BACKUP_FILENAME as any, { baseDir: getPortableBaseDir() } as any)
+      if (!existsFile) return false
+      text = await readTextFile(PORTABLE_BACKUP_FILENAME as any, { baseDir: getPortableBaseDir() } as any)
+    }
+    if (!text) return false
+    const payload = JSON.parse(text) as ConfigBackupPayload
+    if (!payload || !Array.isArray(payload.files)) return false
+    await restoreConfigFromPayload(payload)
+    return true
+  } catch (err) {
+    console.warn('[Portable] 导入失败', err)
+    return false
+  }
+}
+
+async function maybeAutoImportPortableBackup(): Promise<void> {
+  try {
+    if (!(await isPortableModeEnabled())) return
+    await importPortableBackupSilent()
+  } catch (err) {
+    console.warn('[Portable] 自动导入异常', err)
+  }
+}
+
+async function maybeAutoExportPortableBackup(): Promise<void> {
+  try {
+    if (!(await isPortableModeEnabled())) return
+    await exportPortableBackupSilent()
+  } catch (err) {
+    console.warn('[Portable] 自动导出异常', err)
+  }
+}
 
 function normalizeBackupPath(input: string): string {
   try {
@@ -1202,6 +1319,23 @@ async function handleImportConfigFromMenu(): Promise<void> {
   }
 }
 
+async function togglePortableModeFromMenu(): Promise<void> {
+  try {
+    const enabled = await isPortableModeEnabled()
+    const next = !enabled
+    await setPortableModeEnabled(next)
+  if (next) {
+    await exportPortableBackupSilent()
+    pluginNotice(t('portable.enabled') || '便携模式已开启，所有配置写入根目录方便携带', 'ok', 2000)
+  } else {
+    pluginNotice(t('portable.disabled') || '便携模式已关闭', 'ok', 2000)
+  }
+  } catch (err) {
+    console.error('toggle portable mode failed', err)
+    pluginNotice(t('portable.toggleFail') || '切换便携模式失败', 'err', 2200)
+  }
+}
+
 async function buildBuiltinContextMenuItems(): Promise<ContextMenuItemConfig[]> {
   const items: ContextMenuItemConfig[] = []
   const syncCfg = await (async () => { try { return await getWebdavSyncConfig() } catch { return null as any } })()
@@ -1235,6 +1369,13 @@ async function buildBuiltinContextMenuItems(): Promise<ContextMenuItemConfig[]> 
     label: t('menu.importConfig') || '导入配置',
     icon: '📥',
     onClick: async () => { await handleImportConfigFromMenu() }
+  })
+  const portableEnabled = await isPortableModeEnabled()
+  items.push({
+    label: t('menu.portableMode') || '便携模式',
+    icon: '💼',
+    note: portableEnabled ? (t('portable.enabledShort') || '已开启') : (t('portable.disabledShort') || '未开启'),
+    onClick: async () => { await togglePortableModeFromMenu() }
   })
   return items
 }
@@ -9326,7 +9467,17 @@ function bindEvents() {
   // 使用 Tauri 原生 ask 更稳定；必要时再降级到 confirm。
   try {
     void getCurrentWindow().onCloseRequested(async (event) => {
-      if (!dirty) return
+      let portableActive = false
+      try { portableActive = await isPortableModeEnabled() } catch {}
+      const runPortableExportOnExit = async () => {
+        if (portableActive) {
+          try { await exportPortableBackupSilent() } catch (err) { console.warn('[Portable] 关闭时导出失败', err) }
+        }
+      }
+      if (!dirty) {
+        await runPortableExportOnExit()
+        return
+      }
 
       // 阻止默认关闭，进行异步确认
       event.preventDefault()
@@ -9365,6 +9516,7 @@ function bindEvents() {
       }
 
       if (shouldExit) {
+        await runPortableExportOnExit()
         // 若启用“关闭前同步”，沿用后台隐藏 + 同步 + 退出的策略
         try {
           const cfg = await getWebdavSyncConfig()
@@ -9559,6 +9711,7 @@ function bindEvents() {
 
     // 尝试初始化存储（确保完成后再加载扩展，避免读取不到已安装列表）
     await initStore()
+    await maybeAutoImportPortableBackup()
     try {
       const side = await getLibrarySide()
       await setLibrarySide(side, false)

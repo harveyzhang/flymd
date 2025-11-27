@@ -1912,6 +1912,8 @@ async function translateText(context) {
   async function generateTodosAndPush(context) {
   const GENERATING_MARKER = '[正在生成待办并创建提醒]\n\n'
   let generatingNoticeId = null
+  let selectionInfo = null
+  let hasSelection = false
   try {
       const cfg = await loadCfg(context)
       const isFree = isFreeProvider(cfg)
@@ -1931,15 +1933,25 @@ async function translateText(context) {
       return
     }
 
-    // 获取文档内容
-    const content = String(context.getEditorValue() || '').trim()
+    // 检查是否有选中文字
+    try {
+      selectionInfo = await context.getSelection?.()
+      if (selectionInfo && selectionInfo.text && selectionInfo.text.trim()) {
+        hasSelection = true
+      }
+    } catch {}
+
+    // 获取文档内容（如果有选区，使用选区内容；否则使用整个文档）
+    const content = hasSelection ? String(selectionInfo.text || '').trim() : String(context.getEditorValue() || '').trim()
     if (!content) {
-      context.ui.notice('文档内容为空', 'err', 2000)
+      context.ui.notice(hasSelection ? '选中内容为空' : '文档内容为空', 'err', 2000)
       return
     }
 
-    // 在文档顶部显示生成提示
-    context.setEditorValue(GENERATING_MARKER + content)
+    // 在文档顶部显示生成提示（仅在没有选区时）
+    if (!hasSelection) {
+      context.setEditorValue(GENERATING_MARKER + context.getEditorValue())
+    }
     generatingNoticeId = showLongRunningNotice(context, '正在分析文章生成待办事项并创建提醒...')
 
     const { system, prompt } = buildTodoPrompt(content)
@@ -1964,7 +1976,13 @@ async function translateText(context) {
     const todos = String(data?.choices?.[0]?.message?.content || '').trim()
 
     if (!todos) {
-      context.setEditorValue(content)
+      // 恢复原内容（删除生成提示）
+      if (!hasSelection) {
+        const currentContent = String(context.getEditorValue() || '')
+        if (currentContent.startsWith(GENERATING_MARKER)) {
+          context.setEditorValue(currentContent.replace(GENERATING_MARKER, ''))
+        }
+      }
       context.ui.notice('AI 未能生成待办事项', 'err', 3000)
       return
     }
@@ -1977,15 +1995,44 @@ async function translateText(context) {
     })
 
     if (validTodos.length === 0) {
-      context.setEditorValue(content)
+      // 恢复原内容（删除生成提示）
+      if (!hasSelection) {
+        const currentContent = String(context.getEditorValue() || '')
+        if (currentContent.startsWith(GENERATING_MARKER)) {
+          context.setEditorValue(currentContent.replace(GENERATING_MARKER, ''))
+        }
+      }
       context.ui.notice('未能提取有效的待办事项格式', 'err', 3000)
       return
     }
 
-    // 插入到文档开头
+    // 生成待办事项文本
     const todoSection = validTodos.join('\n') + '\n\n'
-    const newContent = todoSection + content
-    context.setEditorValue(newContent)
+
+    // 先插入待办事项到文档
+    if (hasSelection && selectionInfo) {
+      // 如果有选区，替换选区内容
+      try {
+        await context.replaceRange(selectionInfo.start, selectionInfo.end, todoSection.trim())
+      } catch (err) {
+        console.error('替换选区失败：', err)
+        // 降级：在选区后插入
+        try {
+          await context.insertAtCursor('\n' + todoSection)
+        } catch {
+          // 再降级：插入到文档开头
+          const fullContent = String(context.getEditorValue() || '')
+          context.setEditorValue(todoSection + fullContent)
+        }
+      }
+    } else {
+      // 没有选区，插入到文档开头（替换生成提示）
+      const fullContent = String(context.getEditorValue() || '')
+      const newContent = fullContent.startsWith(GENERATING_MARKER)
+        ? todoSection + fullContent.replace(GENERATING_MARKER, '')
+        : todoSection + fullContent
+      context.setEditorValue(newContent)
+    }
 
     // 调用 xxtui API 批量创建提醒
     try {
@@ -1994,6 +2041,9 @@ async function translateText(context) {
       const total = validTodos.length
 
       let msg = `成功生成 ${total} 条待办事项`
+      if (hasSelection) {
+        msg += '（已替换选区）'
+      }
       if (success > 0) {
         msg += `，已创建 ${success} 条提醒`
       }
@@ -2004,7 +2054,8 @@ async function translateText(context) {
       context.ui.notice(msg, success > 0 ? 'ok' : 'warn', 3500)
     } catch (err) {
       console.error('创建提醒失败：', err)
-      context.ui.notice(`成功生成 ${validTodos.length} 条待办事项，但创建提醒失败：${err.message || '未知错误'}`, 'warn', 4000)
+      const prefix = hasSelection ? '成功生成并替换选区，' : '成功生成 '
+      context.ui.notice(`${prefix}${validTodos.length} 条待办事项，但创建提醒失败：${err.message || '未知错误'}`, 'warn', 4000)
     }
   } catch (error) {
     console.error('生成待办事项失败：', error)
@@ -2023,6 +2074,8 @@ async function translateText(context) {
 async function generateTodos(context){
   const GENERATING_MARKER = '[正在生成待办]\n\n'
   let generatingNoticeId = null
+  let selectionInfo = null
+  let hasSelection = false
   try {
       const cfg = await loadCfg(context)
       const isFree = isFreeProvider(cfg)
@@ -2035,15 +2088,25 @@ async function generateTodos(context){
         return
     }
 
-    // 获取文档内容
-    const content = String(context.getEditorValue() || '').trim()
+    // 检查是否有选中文字
+    try {
+      selectionInfo = await context.getSelection?.()
+      if (selectionInfo && selectionInfo.text && selectionInfo.text.trim()) {
+        hasSelection = true
+      }
+    } catch {}
+
+    // 获取文档内容（如果有选区，使用选区内容；否则使用整个文档）
+    const content = hasSelection ? String(selectionInfo.text || '').trim() : String(context.getEditorValue() || '').trim()
     if (!content) {
-      context.ui.notice('文档内容为空', 'err', 2000)
+      context.ui.notice(hasSelection ? '选中内容为空' : '文档内容为空', 'err', 2000)
       return
     }
 
-    // 在文档顶部显示生成提示
-    context.setEditorValue(GENERATING_MARKER + content)
+    // 在文档顶部显示生成提示（仅在没有选区时）
+    if (!hasSelection) {
+      context.setEditorValue(GENERATING_MARKER + context.getEditorValue())
+    }
     generatingNoticeId = showLongRunningNotice(context, '正在分析文章生成待办事项...')
 
     const { system, prompt } = buildTodoPrompt(content)
@@ -2069,7 +2132,12 @@ async function generateTodos(context){
 
     if (!todos) {
       // 恢复原内容（删除生成提示）
-      context.setEditorValue(content)
+      if (!hasSelection) {
+        const currentContent = String(context.getEditorValue() || '')
+        if (currentContent.startsWith(GENERATING_MARKER)) {
+          context.setEditorValue(currentContent.replace(GENERATING_MARKER, ''))
+        }
+      }
       context.ui.notice('AI 未能生成待办事项', 'err', 3000)
       return
     }
@@ -2083,17 +2151,46 @@ async function generateTodos(context){
 
     if (validTodos.length === 0) {
       // 恢复原内容（删除生成提示）
-      context.setEditorValue(content)
+      if (!hasSelection) {
+        const currentContent = String(context.getEditorValue() || '')
+        if (currentContent.startsWith(GENERATING_MARKER)) {
+          context.setEditorValue(currentContent.replace(GENERATING_MARKER, ''))
+        }
+      }
       context.ui.notice('未能提取有效的待办事项格式', 'err', 3000)
       return
     }
 
-    // 插入到文档开头（替换生成提示）
+    // 生成待办事项文本
     const todoSection = validTodos.join('\n') + '\n\n'
-    const newContent = todoSection + content
-    context.setEditorValue(newContent)
 
-    context.ui.notice(`成功生成 ${validTodos.length} 条待办事项`, 'ok', 2500)
+    if (hasSelection && selectionInfo) {
+      // 如果有选区，替换选区内容
+      try {
+        await context.replaceRange(selectionInfo.start, selectionInfo.end, todoSection.trim())
+        context.ui.notice(`成功生成 ${validTodos.length} 条待办事项（已替换选区）`, 'ok', 2500)
+      } catch (err) {
+        console.error('替换选区失败：', err)
+        // 降级：在选区后插入
+        try {
+          await context.insertAtCursor('\n' + todoSection)
+          context.ui.notice(`成功生成 ${validTodos.length} 条待办事项（已插入光标处）`, 'ok', 2500)
+        } catch {
+          // 再降级：插入到文档开头
+          const fullContent = String(context.getEditorValue() || '')
+          context.setEditorValue(todoSection + fullContent)
+          context.ui.notice(`成功生成 ${validTodos.length} 条待办事项（已插入文档开头）`, 'ok', 2500)
+        }
+      }
+    } else {
+      // 没有选区，插入到文档开头（替换生成提示）
+      const fullContent = String(context.getEditorValue() || '')
+      const newContent = fullContent.startsWith(GENERATING_MARKER)
+        ? todoSection + fullContent.replace(GENERATING_MARKER, '')
+        : todoSection + fullContent
+      context.setEditorValue(newContent)
+      context.ui.notice(`成功生成 ${validTodos.length} 条待办事项`, 'ok', 2500)
+    }
   } catch (error) {
     console.error('生成待办事项失败：', error)
     // 恢复原内容（删除生成提示）

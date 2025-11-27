@@ -7169,7 +7169,7 @@ function addStickyTodoButtons() {
       reminderBtn.innerHTML = '⏰'
       reminderBtn.addEventListener('click', async (e) => {
         e.stopPropagation()
-        await handleStickyTodoReminder(fullText, index)
+        await handleStickyTodoReminder(fullText, index, reminderBtn)
       })
 
       actionsDiv.appendChild(pushBtn)
@@ -7225,7 +7225,7 @@ async function handleStickyTodoPush(todoText: string, index: number) {
 }
 
 // 处理便签模式待办项创建提醒
-async function handleStickyTodoReminder(todoText: string, index: number) {
+async function handleStickyTodoReminder(todoText: string, index: number, btn?: HTMLButtonElement) {
   try {
     // 直接从 pluginAPIRegistry 获取 xxtui 插件 API
     const record = pluginAPIRegistry.get('xxtui-todo-push')
@@ -7242,6 +7242,14 @@ async function handleStickyTodoReminder(todoText: string, index: number) {
 
     if (result.success > 0) {
       pluginNotice(`创建提醒成功: ${result.success} 条`, 'ok', 2000)
+      // 本地标记：当前条目已创建提醒，仅影响本次预览会话
+      try {
+        if (btn) {
+          btn.innerHTML = '🔔'
+          btn.title = '已创建提醒'
+          btn.classList.add('sticky-todo-reminder-created')
+        }
+      } catch {}
     } else if (!todoText.includes('@')) {
       alert('请在待办内容中添加 @时间 格式，例如：\n\n• 开会 @明天 下午3点\n• 写周报 @2025-11-21 09:00\n• 打电话 @2小时后')
     } else {

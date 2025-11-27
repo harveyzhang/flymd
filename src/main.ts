@@ -6423,8 +6423,6 @@ async function toggleFocusMode(enabled?: boolean) {
     console.warn('切换窗口装饰失败:', err)
   }
 
-  // 保存状态到 store
-  try { if (store) { await store.set('focusMode', focusMode); await store.save() } } catch {}
   // 如果退出专注模式，确保 titlebar 可见
   if (!focusMode) {
     const titlebar = document.querySelector('.titlebar') as HTMLElement | null
@@ -6496,8 +6494,6 @@ function initFocusModeEvents() {
     const detail = (ev as CustomEvent).detail || {}
     const enabled = !!detail.enabled
     focusMode = enabled
-    // 保存状态到 store
-    try { if (store) { await store.set('focusMode', focusMode); await store.save() } } catch {}
     // 如果退出专注模式，确保 titlebar 可见
     if (!focusMode) {
       titlebar.classList.remove('show')
@@ -6977,12 +6973,8 @@ async function enterStickyNoteMode(filePath: string) {
     console.error('[便签模式] 打开文件失败:', e)
   }
 
-  // 2. 进入专注模式（先记住之前的状态，供下次正常启动恢复）
+  // 2. 进入专注模式（不再持久化专注状态，仅当前便签窗口生效）
   try {
-    if (store) {
-      await store.set('focusModeBeforeSticky', focusMode)
-      await store.save()
-    }
     await toggleFocusMode(true)
   } catch (e) {
     console.error('[便签模式] 进入专注模式失败:', e)
@@ -7073,6 +7065,44 @@ async function restoreWindowStateBeforeSticky(): Promise<void> {
   } catch (e) {
     console.warn('[便签模式] 恢复窗口状态失败:', e)
   }
+}
+
+// 退出便签模式时恢复全局状态标志（供关闭后新实例正确启动）
+function resetStickyModeFlags(): void {
+  try {
+    stickyNoteMode = false
+    stickyNoteLocked = false
+    stickyNoteOnTop = false
+    stickyTodoAutoPreview = false
+    document.body.classList.remove('sticky-note-mode')
+  } catch {}
+}
+
+// 兜底：如果检测到窗口尺寸异常偏小，则恢复到 960x640
+async function ensureMinWindowSize(): Promise<void> {
+  try {
+    const win = getCurrentWindow()
+    const size = await win.innerSize()
+    const minW = 960
+    const minH = 640
+    if (size.width < minW || size.height < minH) {
+      const { LogicalSize } = await import('@tauri-apps/api/dpi')
+      await win.setSize(new LogicalSize(minW, minH))
+    }
+  } catch {}
+}
+
+// 兜底：强制退出专注模式，恢复原生标题栏（等价于“手动切换一次专注模式再切回来”的效果）
+async function resetFocusModeDecorations(): Promise<void> {
+  try {
+    focusMode = false
+    document.body.classList.remove('focus-mode')
+    try { removeCustomTitleBar() } catch {}
+    try {
+      const win = getCurrentWindow()
+      await win.setDecorations(true)
+    } catch {}
+  } catch {}
 }
 
 async function pickLibraryRoot(): Promise<string | null> {
@@ -9778,30 +9808,12 @@ function bindEvents() {
 
     // 非便签模式启动时，检查是否有便签前保存的状态需要恢复（若存在则恢复并清除记录）
     if (!isStickyNoteStartup) {
+      // 1) 若存在便签前窗口状态，先恢复
       try { await restoreWindowStateBeforeSticky() } catch {}
-
-      // 恢复专注模式状态（优先使用便签前记录的状态）
-      try {
-        if (store) {
-          const beforeSticky = await store.get('focusModeBeforeSticky')
-          if (beforeSticky !== undefined && beforeSticky !== null) {
-            // 有便签前状态记录：使用它来恢复，并清除记录
-            if (beforeSticky) {
-              setTimeout(() => toggleFocusMode(true), 100)
-            }
-            await store.delete('focusModeBeforeSticky')
-            await store.save()
-          } else {
-            // 没有便签前状态记录：使用正常的 focusMode 恢复
-            const savedFocusMode = await store.get('focusMode')
-            if (savedFocusMode) {
-              setTimeout(() => toggleFocusMode(true), 100)
-            }
-          }
-        }
-      } catch (e) {
-        console.warn('[启动] 恢复专注模式状态失败:', e)
-      }
+      // 2) 兜底：窗口过小则拉回 960x640，避免残留便签尺寸
+      try { await ensureMinWindowSize() } catch {}
+      // 3) 兜底：强制退出专注模式并恢复原生标题栏，防止异常无标题栏状态
+      try { await resetFocusModeDecorations() } catch {}
 
       // 恢复编辑模式状态（如果有便签前记录）
       try {

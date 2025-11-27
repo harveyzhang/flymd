@@ -5344,6 +5344,15 @@ body.sticky-note-mode li.task-list-item {
   padding: 1px 0 !important;
 }
 
+/* 便签模式：删除线只应用在文字内容上，不影响图标 */
+body.sticky-note-mode li.task-list-item:has(input.task-list-item-checkbox:checked) {
+  text-decoration: none !important;
+}
+
+body.sticky-note-mode li.task-list-item:has(input.task-list-item-checkbox:checked) .task-content {
+  text-decoration: line-through;
+}
+
 /* 按钮容器 - 窗口顶部中央 */
 .sticky-note-controls {
   position: fixed;

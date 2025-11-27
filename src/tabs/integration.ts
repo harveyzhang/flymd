@@ -8,10 +8,12 @@
 import { tabManager, TabManagerHooks } from './TabManager'
 import { TabBar } from './TabBar'
 import type { EditorMode, TabDocument } from './types'
+import { TextareaUndoManager } from './TextareaUndoManager'
 
 // 全局引用
 let tabBar: TabBar | null = null
 let initialized = false
+const undoManager = new TextareaUndoManager()
 
 // 标签切换时暂停轮询检测（避免冲突）
 let pauseWatcher = false
@@ -236,6 +238,13 @@ export async function initTabSystem(): Promise<void> {
   const hooks = createHooks()
   tabManager.init(hooks)
 
+  // 初始化撤销管理器：为当前激活标签创建撤销栈
+  const editor = document.getElementById('editor') as HTMLTextAreaElement | null
+  const activeTab = tabManager.getActiveTab()
+  if (editor && activeTab) {
+    undoManager.init(activeTab.id, editor)
+  }
+
   // 初始化 TabBar
   tabBar = new TabBar({
     container: tabbarContainer,
@@ -245,6 +254,18 @@ export async function initTabSystem(): Promise<void> {
     }
   })
   tabBar.init()
+
+  // 监听标签事件，同步撤销栈
+  tabManager.addEventListener((event) => {
+    if (event.type === 'tab-switched') {
+      const ed = document.getElementById('editor') as HTMLTextAreaElement | null
+      if (ed) {
+        undoManager.switchTab(event.toTabId, ed)
+      }
+    } else if (event.type === 'tab-closed') {
+      undoManager.removeTab(event.tabId)
+    }
+  })
 
   // 挂钩关键操作
   hookOpenFile()
@@ -279,12 +300,16 @@ function createHooks(): TabManagerHooks {
       // 暂停 dirty 同步，避免设置内容时触发 input 事件导致误判为已修改
       pauseDirtySyncFor(500)
 
-      const editor = document.getElementById('editor') as HTMLTextAreaElement
-      if (editor) {
-        editor.value = content
-        // 触发 input 事件以便其他监听器感知
-        editor.dispatchEvent(new Event('input', { bubbles: true }))
-      }
+      // 切换标签 / 打开文件时的程序性更新，不应该写入撤销栈
+      undoManager.runWithoutRecording(() => {
+        const editor = document.getElementById('editor') as HTMLTextAreaElement
+        if (editor) {
+          editor.value = content
+          // 触发 input 事件以便其他监听器感知
+          editor.dispatchEvent(new Event('input', { bubbles: true }))
+        }
+      })
+
       // 如果在所见模式，同步内容
       if (flymd.flymdWysiwygV2ReplaceAll) {
         try { flymd.flymdWysiwygV2ReplaceAll(content) } catch {}

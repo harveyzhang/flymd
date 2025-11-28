@@ -97,6 +97,39 @@ function getBlockInfo(content, pos) {
   return { id, label: labelBase.slice(0, 32), start, end }
 }
 
+function getBlockRangeByIndex(content, blockIndex) {
+  const text = String(content || '')
+  const len = text.length
+  if (!len) return { start: 0, end: 0 }
+  const idx = blockIndex >>> 0
+  const hasDouble = text.indexOf('\n\n') !== -1
+  let start = 0
+  let current = 0
+  while (current < idx && start <= len) {
+    let endInner
+    if (hasDouble) {
+      const i2 = text.indexOf('\n\n', start)
+      endInner = i2 === -1 ? len : i2
+    } else {
+      const i2 = text.indexOf('\n', start)
+      endInner = i2 === -1 ? len : i2
+    }
+    start = endInner >= len ? len : endInner + (hasDouble ? 2 : 1)
+    current++
+  }
+  if (start > len) return { start: len, end: len }
+  let end
+  if (hasDouble) {
+    const idx2 = text.indexOf('\n\n', start)
+    end = idx2 === -1 ? len : idx2
+  } else {
+    const idx2 = text.indexOf('\n', start)
+    end = idx2 === -1 ? len : idx2
+  }
+  if (end < start) end = start
+  return { start, end }
+}
+
 function ensureLockPanel() {
   if (__COLLAB_LOCK_PANEL_EL__) return __COLLAB_LOCK_PANEL_EL__
   const doc = (typeof document !== 'undefined' && document) || null
@@ -200,6 +233,78 @@ function scheduleLockAutoRelease(blockId, context) {
       __COLLAB_CURRENT_BLOCK_ID__ = ''
     } catch {}
   }, LOCK_IDLE_TIMEOUT_MS)
+}
+
+function applyRemoteContent(context, content) {
+  const editorEl = getEditorElement()
+  let oldSelStart = null
+  let oldSelEnd = null
+  let oldContent = ''
+  let oldBlockStart = -1
+  let oldOffsetInBlock = 0
+  const currentBlockId = __COLLAB_CURRENT_BLOCK_ID__ || ''
+
+  if (editorEl) {
+    try {
+      oldSelStart = editorEl.selectionStart >>> 0
+      oldSelEnd = editorEl.selectionEnd >>> 0
+    } catch {}
+  }
+
+  try {
+    oldContent = String(context.getEditorValue() || '')
+  } catch {
+    oldContent = ''
+  }
+
+  if (oldContent && typeof oldSelStart === 'number' && currentBlockId && currentBlockId.startsWith('b_')) {
+    const idx = parseInt(currentBlockId.slice(2), 10)
+    if (!Number.isNaN(idx) && idx >= 0) {
+      const range = getBlockRangeByIndex(oldContent, idx)
+      if (range && oldSelStart >= range.start && oldSelStart <= range.end) {
+        oldBlockStart = range.start >>> 0
+        oldOffsetInBlock = (oldSelStart >>> 0) - oldBlockStart
+      }
+    }
+  }
+
+  __COLLAB_APPLYING_REMOTE__ = true
+  try {
+    context.setEditorValue(content)
+  } catch {
+  } finally {
+    __COLLAB_APPLYING_REMOTE__ = false
+  }
+
+  const ed = getEditorElement()
+  if (!ed || typeof oldSelStart !== 'number' || typeof oldSelEnd !== 'number') return
+
+  const textNow = String(ed.value || '')
+  let s = oldSelStart >>> 0
+  let e = oldSelEnd >>> 0
+
+  if (currentBlockId && currentBlockId.startsWith('b_') && oldBlockStart >= 0) {
+    const idxNow = parseInt(currentBlockId.slice(2), 10)
+    if (!Number.isNaN(idxNow) && idxNow >= 0) {
+      const rangeNow = getBlockRangeByIndex(textNow, idxNow)
+      if (rangeNow) {
+        const blockLen = Math.max(0, (rangeNow.end >>> 0) - (rangeNow.start >>> 0))
+        const off = Math.max(0, Math.min(blockLen, oldOffsetInBlock >>> 0))
+        s = (rangeNow.start >>> 0) + off
+        e = s
+      }
+    }
+  }
+
+  const max = textNow.length
+  if (s > max) s = max
+  if (e > max) e = max
+  if (s < 0) s = 0
+  if (e < 0) e = 0
+  try {
+    ed.selectionStart = s
+    ed.selectionEnd = e
+  } catch {}
 }
 
 async function loadCfg(context) {
@@ -467,13 +572,7 @@ async function startCollab(context, cfg) {
           __COLLAB_LAST__ = msg.content
           return
         }
-        __COLLAB_APPLYING_REMOTE__ = true
-        try {
-          context.setEditorValue(msg.content)
-        } catch (e) {
-        } finally {
-          __COLLAB_APPLYING_REMOTE__ = false
-        }
+        applyRemoteContent(context, msg.content)
         __COLLAB_LAST__ = msg.content
         return
       }
@@ -491,13 +590,7 @@ async function startCollab(context, cfg) {
         // 本地刚刚有输入，暂缓应用远程更新以避免抢走光标
         return
       }
-      __COLLAB_APPLYING_REMOTE__ = true
-      try {
-        context.setEditorValue(msg.content)
-      } catch (e) {
-      } finally {
-        __COLLAB_APPLYING_REMOTE__ = false
-      }
+      applyRemoteContent(context, msg.content)
       __COLLAB_LAST__ = msg.content
       return
     }

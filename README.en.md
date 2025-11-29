@@ -337,6 +337,9 @@ Not yet—`- [ ]` / `- [x]` checkboxes only work in source/preview modes for now
 
 ## Open Source Support
 
-Signing up for OMG (OhMyGPT: a high-quality AI service platform) through this link helps me reduce development costs, and you also get a $20 bonus: [OhMyGPT: a high-quality AI service platform](https://x.dogenet.win/i/dXCKvZ6Q)
+Signing up through the following links helps me reduce development costs, and you also get partial credits:
+[rightcode: Highly stable and cost-effective Claude and Codex relay service](https://www.right.codes/register?aff=E8E36524)
+[OhMyGPT: A high-quality AI service platform](https://x.dogenet.win/i/dXCKvZ6Q)
+**Gmail and QQ email addresses only**
 
 <img width="300" height="300" alt="image" src="https://github.com/user-attachments/assets/4a716fd5-dc61-4a4f-b968-91626debe8d2" />

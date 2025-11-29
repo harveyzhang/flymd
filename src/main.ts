@@ -5251,10 +5251,9 @@ async function switchToPreviewAfterOpen() {
   // 若所见 V2 已启用：刷新所见视图内容而不是切换到预览
   if (wysiwygV2Active) {
     try {
-      const root = document.getElementById('md-wysiwyg-root') as HTMLDivElement | null
-      if (root) {
-        const __st2 = (editor as HTMLTextAreaElement).selectionStart >>> 0; let __mdInit2 = (editor as HTMLTextAreaElement).value; try { if (__st2 > 0 && __mdInit2[__st2-1] === '\n' && (__st2 < 2 || __mdInit2[__st2-2] !== '\n')) { const before = __mdInit2.slice(0, __st2-1); const after = __mdInit2.slice(__st2-1); if (!/  $/.test(before)) { __mdInit2 = before + '  ' + after } } } catch {} await enableWysiwygV2(root, __mdInit2, (mdNext) => { try { const _md = String(mdNext || '').replace(/\u2003/g,'&emsp;'); if (_md !== editor.value) { editor.value = _md; dirty = true; refreshTitle(); refreshStatus() } } catch {} })
-      }
+      // 直接用现有 WYSIWYG V2 实例替换文档内容，避免频繁销毁/重建 Milkdown
+      const valueNow = String((editor as HTMLTextAreaElement).value || '')
+      await wysiwygV2ReplaceAll(valueNow)
     } catch {}
     try { preview.classList.add('hidden') } catch {}
     try { syncToggleButton() } catch {}

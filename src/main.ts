@@ -7493,8 +7493,8 @@ async function enterStickyNoteMode(filePath: string) {
       }
     } catch {}
 
-    // 便签尺寸：宽 400，高 300
-    const stickyWidth = 400
+    // 便签尺寸：宽 340，高 300
+    const stickyWidth = 340
     const stickyHeight = 300
     // 获取主显示器尺寸
     const { availWidth, availHeight } = window.screen

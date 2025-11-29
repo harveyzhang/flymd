@@ -913,17 +913,28 @@ function enterLatexSourceEdit(hitEl: HTMLElement) {
     const ov = ensureOverlayHost()
     const hostRc = (_root as HTMLElement).getBoundingClientRect()
     const rc = mathEl.getBoundingClientRect()
-    // 获取滚动偏移量，修复编辑框定位问题
-    // 滚动发生在 _root 自身（#md-wysiwyg-root 有 overflow-y: auto）
-    const scrollTop = (_root as HTMLElement)?.scrollTop || 0
-    const scrollLeft = (_root as HTMLElement)?.scrollLeft || 0
+    const hostWidth = hostRc.width || 0
+    const isBlock = (mathEl.dataset?.type === 'math_block' || mathEl.tagName === 'DIV')
+
+    // 计算编辑弹层宽度：在公式自身宽度基础上增加余量，并限制在容器范围内
+    const marginX = 16
+    const baseWidth = rc.width || 0
+    const minWidth = Math.max(320, baseWidth + 40)
+    const maxWidth = Math.max(200, hostWidth - marginX * 2)
+    const finalWidth = Math.min(maxWidth, minWidth)
+
     const wrap = document.createElement('div')
     wrap.className = 'ov-katex'
     wrap.style.position = 'absolute'
     wrap.style.pointerEvents = 'none'
-    wrap.style.left = Math.max(0, rc.left - hostRc.left + scrollLeft) + 'px'
-    wrap.style.top = Math.max(0, rc.top - hostRc.top + scrollTop) + 'px'
-    wrap.style.width = Math.max(10, rc.width) + 'px'
+    // 水平居中对齐当前公式，并保证不会超出容器
+    const centerX = (rc.left - hostRc.left) + (rc.width / 2)
+    let left = centerX - finalWidth / 2
+    left = Math.max(marginX, Math.min(hostWidth - finalWidth - marginX, left))
+    wrap.style.left = Math.max(0, Math.round(left)) + 'px'
+    // 垂直位置：放在公式下方留一点空隙
+    wrap.style.top = Math.max(8, Math.round(rc.bottom - hostRc.top + 8)) + 'px'
+    wrap.style.width = Math.max(10, finalWidth) + 'px'
     const inner = document.createElement('div')
     inner.style.pointerEvents = 'auto'
     inner.style.background = 'var(--wysiwyg-bg)'
@@ -933,9 +944,14 @@ function enterLatexSourceEdit(hitEl: HTMLElement) {
     inner.style.display = 'flex'
     inner.style.alignItems = 'stretch'
     const ta = document.createElement('textarea')
-    ta.value = ((mathEl.dataset?.type === 'math_block' || mathEl.tagName === 'DIV') ? ('$$\n' + (code || '') + '\n$$') : ('$' + (code || '') + '$'))
+    ta.value = (isBlock ? ('$$\n' + (code || '') + '\n$$') : ('$' + (code || '') + '$'))
     ta.style.width = '100%'
-    ta.style.minHeight = (mathEl.dataset?.type === 'math_block' ? Math.max(40, rc.height) : 32) + 'px'
+    // 根据公式类型与渲染高度估算一个更宽松的编辑高度，避免复杂公式被挤在两行内
+    const baseLines = isBlock ? 4 : 3
+    const lineHeightPx = 20
+    const renderH = rc.height || 0
+    const minHeightPx = Math.max(baseLines * lineHeightPx, renderH + (isBlock ? 16 : 8))
+    ta.style.minHeight = minHeightPx + 'px'
     ta.style.fontFamily = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
     ta.style.fontSize = '14px'
     ta.style.lineHeight = '1.4'

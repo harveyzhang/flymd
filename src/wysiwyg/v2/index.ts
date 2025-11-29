@@ -684,14 +684,19 @@ function getCodeCopyText(pre: HTMLElement): string | null {
 function positionCodeCopyWrap(pre: HTMLElement, wrap: HTMLDivElement, rootRc: DOMRect) {
   try {
     const preRc = pre.getBoundingClientRect()
+    // 如果代码块完全在视口之上或之下，则隐藏对应按钮，避免在顶部堆积
+    if (preRc.bottom <= rootRc.top || preRc.top >= rootRc.bottom) {
+      wrap.style.display = 'none'
+      return
+    }
+    // 代码块在可视区域内时，确保按钮可见
+    wrap.style.display = ''
     const btn = wrap.querySelector('button.code-copy') as HTMLButtonElement | null
     const btnRc = btn ? btn.getBoundingClientRect() : wrap.getBoundingClientRect()
     const btnW = btnRc.width || btn?.offsetWidth || wrap.offsetWidth || 0
-    // 获取滚动偏移量，修复按钮定位问题
-    const scrollTop = (_root as HTMLElement)?.scrollTop || 0
-    const scrollLeft = (_root as HTMLElement)?.scrollLeft || 0
-    const left = Math.max(0, (preRc.left - rootRc.left) + Math.max(0, preRc.width - btnW - 16) + scrollLeft)
-    const top = Math.max(0, (preRc.top - rootRc.top) + 14 + scrollTop)
+    // 所见模式下滚动发生在内部 scrollView，pre 与 root 的相对位置已经包含滚动偏移
+    const left = Math.max(0, (preRc.left - rootRc.left) + Math.max(0, preRc.width - btnW - 16))
+    const top = Math.max(0, (preRc.top - rootRc.top) + 14)
     wrap.style.left = left + 'px'
     wrap.style.top = top + 'px'
   } catch {}

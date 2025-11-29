@@ -38,12 +38,32 @@ let __COLLAB_LOCK_IDLE_TIMER__ = null
 const LOCK_IDLE_TIMEOUT_MS = 2000
 const REMOTE_APPLY_QUIET_MS = 800
 let __COLLAB_LAST_TYPED_AT__ = 0
+let __COLLAB_EDITOR_PREV_CARET_COLOR__ = ''
 
 function getEditorElement() {
   try {
     return document.getElementById('editor')
   } catch {
     return null
+  }
+}
+
+function applyEditorCaretColor(enabled) {
+  const el = getEditorElement()
+  if (!el) return
+  if (enabled) {
+    try {
+      if (!__COLLAB_EDITOR_PREV_CARET_COLOR__) {
+        __COLLAB_EDITOR_PREV_CARET_COLOR__ = el.style.caretColor || ''
+      }
+    } catch {}
+    try {
+      el.style.caretColor = __COLLAB_MY_COLOR__ || el.style.caretColor || ''
+    } catch {}
+  } else {
+    try {
+      el.style.caretColor = __COLLAB_EDITOR_PREV_CARET_COLOR__ || ''
+    } catch {}
   }
 }
 
@@ -179,8 +199,14 @@ function renderLockPanel() {
   panel.title = peersTitle || '协同状态'
 
   if (!entries.length) {
-    panel.innerHTML =
-      '<div style="font-size:12px;opacity:0.9;white-space:nowrap;">协同状态：空闲</div>'
+    const base = '<div style="font-size:12px;opacity:0.9;white-space:nowrap;">协同状态：空闲</div>'
+    const namesLine =
+      peerNames.length > 0
+        ? `<div style="margin-top:2px;font-size:11px;opacity:0.85;white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis;">在线：${peerNames.join('、')}</div>`
+        : ''
+    const countLine =
+      `<div style="margin-top:3px;border-top:1px solid rgba(255,255,255,0.12);padding-top:2px;font-size:11px;opacity:0.8;">协同人数：${peersCount}</div>`
+    panel.innerHTML = base + namesLine + countLine
     return
   }
 
@@ -399,17 +425,18 @@ function stopCollab() {
     clearInterval(__COLLAB_TIMER__)
     __COLLAB_TIMER__ = null
   }
-  if (__COLLAB_WS__) {
-    try {
-      __COLLAB_WS__.close()
-    } catch {}
-    __COLLAB_WS__ = null
+    if (__COLLAB_WS__) {
+      try {
+        __COLLAB_WS__.close()
+      } catch {}
+      __COLLAB_WS__ = null
+    }
+    if (__COLLAB_CTX__) {
+      showStatus(__COLLAB_CTX__, 'idle')
+    }
+    clearLockPanel()
+    applyEditorCaretColor(false)
   }
-  if (__COLLAB_CTX__) {
-    showStatus(__COLLAB_CTX__, 'idle')
-  }
-  clearLockPanel()
-}
 
 function startSyncLoop(context, cfg) {
   if (__COLLAB_TIMER__) clearInterval(__COLLAB_TIMER__)
@@ -483,10 +510,11 @@ async function startCollab(context, cfg) {
     return
   }
 
-  __COLLAB_WS__ = ws
-  __COLLAB_CFG__ = cfg
-  __COLLAB_MY_NAME__ = name || '匿名'
-  __COLLAB_MY_COLOR__ = colorFromName(__COLLAB_MY_NAME__)
+    __COLLAB_WS__ = ws
+    __COLLAB_CFG__ = cfg
+    __COLLAB_MY_NAME__ = name || '匿名'
+    __COLLAB_MY_COLOR__ = colorFromName(__COLLAB_MY_NAME__)
+    applyEditorCaretColor(true)
 
   showStatus(context, 'connecting', room, null, cfg.boundDocTitle)
 

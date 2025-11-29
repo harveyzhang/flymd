@@ -200,8 +200,8 @@ function hideLocalCaret() {
 function ensureLocalCaretMetrics(editorEl) {
   if (!editorEl) return
   try {
-    const cs = window.getComputedStyle(editorEl)
-    if (!__COLLAB_LOCAL_CARET_CHAR_WIDTH__ || !__COLLAB_LOCAL_CARET_LINE_HEIGHT__) {
+      const cs = window.getComputedStyle(editorEl)
+      if (!__COLLAB_LOCAL_CARET_CHAR_WIDTH__ || !__COLLAB_LOCAL_CARET_LINE_HEIGHT__) {
       const doc = editorEl.ownerDocument || document
       const span = doc.createElement('span')
       span.textContent = 'Ｍ'
@@ -219,95 +219,6 @@ function ensureLocalCaretMetrics(editorEl) {
     }
   } catch {}
 }
-
-function updateLocalCaretVisual() {
-  const editorEl = getEditorElement()
-  if (!editorEl || typeof editorEl.selectionStart !== 'number') {
-    hideLocalCaret()
-    return
-  }
-  if (!isConnected() || !__COLLAB_CFG__ || !__COLLAB_DOC_ACTIVE__) {
-    hideLocalCaret()
-    return
-  }
-  try {
-    const cs = window.getComputedStyle(editorEl)
-    if (cs.display === 'none' || cs.visibility === 'hidden') {
-      hideLocalCaret()
-      return
-    }
-  } catch {
-    // 忽略样式计算失败
-  }
-
-  ensureLocalCaretMetrics(editorEl)
-  if (!__COLLAB_LOCAL_CARET_CHAR_WIDTH__ || !__COLLAB_LOCAL_CARET_LINE_HEIGHT__) {
-    hideLocalCaret()
-    return
-  }
-
-  let text = ''
-  try {
-    text = String(editorEl.value || '')
-  } catch {
-    hideLocalCaret()
-    return
-  }
-  let pos = editorEl.selectionStart >>> 0
-  if (pos < 0) pos = 0
-  if (pos > text.length) pos = text.length
-
-  let line = 0
-  let col = 0
-  for (let i = 0; i < pos; i++) {
-    const ch = text.charCodeAt(i)
-    if (ch === 10) {
-      line++
-      col = 0
-    } else {
-      col++
-    }
-  }
-
-  let rect
-  let padLeft = 0
-  let padTop = 0
-  try {
-    rect = editorEl.getBoundingClientRect()
-    const cs = window.getComputedStyle(editorEl)
-    padLeft = parseFloat(cs.paddingLeft) || 0
-    padTop = parseFloat(cs.paddingTop) || 0
-  } catch {
-    hideLocalCaret()
-    return
-  }
-
-  const scrollY = window.scrollY || window.pageYOffset || 0
-  const scrollX = window.scrollX || window.pageXOffset || 0
-  const top =
-    rect.top +
-    scrollY +
-    padTop +
-    line * __COLLAB_LOCAL_CARET_LINE_HEIGHT__ -
-    editorEl.scrollTop
-  const left =
-    rect.left +
-    scrollX +
-    padLeft +
-    col * __COLLAB_LOCAL_CARET_CHAR_WIDTH__ -
-    editorEl.scrollLeft
-
-  const caretEl = ensureLocalCaretEl()
-  if (!caretEl) return
-  try {
-    caretEl.style.height = __COLLAB_LOCAL_CARET_LINE_HEIGHT__ + 'px'
-    caretEl.style.left = left + 'px'
-    caretEl.style.top = top + 'px'
-    caretEl.style.background = __COLLAB_MY_COLOR__ || '#ff1744'
-    caretEl.style.display = 'block'
-  } catch {}
-}
-
 function colorFromName(name) {
   // 使用更高对比度的调色板，提升可见度（尤其是浅色背景下）
   const palette = ['#ff1744', '#d500f9', '#651fff', '#2962ff', '#00c853', '#ffd600', '#ff9100', '#00bfa5']

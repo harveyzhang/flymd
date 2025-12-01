@@ -105,6 +105,47 @@ function computeWorkspaceBounds() {
   }
 }
 
+// 根据工作区边界，统一设置左右停靠时的垂直位置，避免遮挡标题栏/标签栏
+function applyDockVerticalBounds(winEl, boundsFromCaller) {
+  if (!winEl) return
+  try {
+    const bounds = boundsFromCaller || computeWorkspaceBounds()
+    const winH = WIN().innerHeight || 720
+    let top = Number(bounds && bounds.top)
+    let height = Number(bounds && bounds.height)
+    if (!Number.isFinite(top) || top < 0) top = 0
+    if (!Number.isFinite(height) || height <= 0) height = Math.max(0, winH - top)
+
+    // 兼容旧环境：如果没有容器信息，则至少让出菜单栏高度
+    if (top === 0) {
+      try {
+        const bar = DOC().querySelector('.menubar')
+        const barH = (bar && bar.clientHeight) || 0
+        if (barH > 0) {
+          top = barH
+          height = Math.max(0, winH - top)
+        }
+      } catch {}
+    }
+
+    winEl.style.top = top + 'px'
+    winEl.style.bottom = 'auto'
+    winEl.style.height = (height > 0 ? height : Math.max(0, winH - top)) + 'px'
+  } catch {
+    try {
+      const bar = DOC().querySelector('.menubar')
+      const topH = ((bar && bar.clientHeight) || 0)
+      winEl.style.top = topH + 'px'
+      winEl.style.bottom = 'auto'
+      winEl.style.height = 'calc(100vh - ' + topH + 'px)'
+    } catch {
+      winEl.style.top = '0px'
+      winEl.style.bottom = 'auto'
+      winEl.style.height = '100vh'
+    }
+  }
+}
+
 function syncDockedWindowWithWorkspace() {
   try {
     const winEl = el('ai-assist-win')
@@ -118,6 +159,7 @@ function syncDockedWindowWithWorkspace() {
     if (dockLeft) {
       const currentWidth = parseInt(winEl.style.width) || MIN_WIDTH
       const panelWidth = Math.max(MIN_WIDTH, Math.min(currentWidth, workspaceWidth || MIN_WIDTH))
+      applyDockVerticalBounds(winEl, bounds)
       winEl.style.left = bounds.left + 'px'
       winEl.style.right = 'auto'
       winEl.style.width = panelWidth + 'px'
@@ -127,6 +169,7 @@ function syncDockedWindowWithWorkspace() {
     if (dockRight) {
       const currentWidth = parseInt(winEl.style.width) || MIN_WIDTH
       const panelWidth = Math.max(MIN_WIDTH, Math.min(currentWidth, workspaceWidth || MIN_WIDTH))
+      applyDockVerticalBounds(winEl, bounds)
       winEl.style.right = bounds.right + 'px'
       winEl.style.left = 'auto'
       winEl.style.width = panelWidth + 'px'
@@ -1311,11 +1354,9 @@ function bindFloatDragResize(context, el){
           const bounds = computeWorkspaceBounds()
           const viewportWidth = WIN().innerWidth || 1280
           const workspaceWidth = Math.max(0, viewportWidth - bounds.left - bounds.right)
-          const topH = (()=>{ try { const bar = DOC().querySelector('.menubar'); return (bar && bar.clientHeight) || 0 } catch { return 0 } })()
-          el.style.top = topH + 'px'
+          applyDockVerticalBounds(el, bounds)
           el.style.left = bounds.left + 'px'
           el.style.right = 'auto'
-          el.style.height = 'calc(100vh - ' + topH + 'px)'
           const w = Math.max(MIN_WIDTH, Math.min(parseInt(el.style.width)||300, workspaceWidth || MIN_WIDTH))
           el.style.width = w + 'px'
           setDockPush('left', w)
@@ -1326,11 +1367,9 @@ function bindFloatDragResize(context, el){
           const bounds = computeWorkspaceBounds()
           const viewportWidth = WIN().innerWidth || 1280
           const workspaceWidth = Math.max(0, viewportWidth - bounds.left - bounds.right)
-          const topH = (()=>{ try { const bar = DOC().querySelector('.menubar'); return (bar && bar.clientHeight) || 0 } catch { return 0 } })()
-          el.style.top = topH + 'px'
+          applyDockVerticalBounds(el, bounds)
           el.style.right = bounds.right + 'px'
           el.style.left = 'auto'
-          el.style.height = 'calc(100vh - ' + topH + 'px)'
           const w = Math.max(MIN_WIDTH, Math.min(parseInt(el.style.width)||300, workspaceWidth || MIN_WIDTH))
           el.style.width = w + 'px'
           setDockPush('right', w)
@@ -1930,14 +1969,7 @@ async function mountWindow(context){
     const bounds = computeWorkspaceBounds()
     const workspaceWidth = bounds.width || (WIN().innerWidth || 1280)
     const panelWidth = Math.min(dockWidth, workspaceWidth || dockWidth)
-    try {
-      const bar = DOC().querySelector('.menubar')
-      const topH = ((bar && bar.clientHeight) || 0)
-      el.style.top = topH + 'px'
-      el.style.height = 'calc(100vh - ' + topH + 'px)'
-    } catch {
-      el.style.top = '0px'; el.style.height = '100vh'
-    }
+    applyDockVerticalBounds(el, bounds)
     el.style.left = bounds.left + 'px'
     el.style.right = 'auto'
     el.style.width = panelWidth + 'px'
@@ -1947,14 +1979,7 @@ async function mountWindow(context){
     const bounds = computeWorkspaceBounds()
     const workspaceWidth = bounds.width || (WIN().innerWidth || 1280)
     const panelWidth = Math.min(dockWidth, workspaceWidth || dockWidth)
-    try {
-      const bar = DOC().querySelector('.menubar')
-      const topH = ((bar && bar.clientHeight) || 0)
-      el.style.top = topH + 'px'
-      el.style.height = 'calc(100vh - ' + topH + 'px)'
-    } catch {
-      el.style.top = '0px'; el.style.height = '100vh'
-    }
+    applyDockVerticalBounds(el, bounds)
     el.style.right = bounds.right + 'px'
     el.style.left = 'auto'
     el.style.width = panelWidth + 'px'
@@ -2396,14 +2421,7 @@ async function toggleDockMode(context, el){
       const bounds = computeWorkspaceBounds()
       const workspaceWidth = bounds.width || (WIN().innerWidth || 1280)
       const panelWidth = Math.max(MIN_WIDTH, Math.min(Number((cfg && cfg.win && cfg.win.w) || MIN_WIDTH), workspaceWidth || MIN_WIDTH))
-      try {
-        const bar = DOC().querySelector('.menubar')
-        const topH = ((bar && bar.clientHeight) || 0)
-        el.style.top = topH + 'px'
-        el.style.height = 'calc(100vh - ' + topH + 'px)'
-      } catch {
-        el.style.top = '0px'; el.style.height = '100vh'
-      }
+      applyDockVerticalBounds(el, bounds)
       el.style.left = bounds.left + 'px'
       el.style.right = 'auto'
       el.style.width = panelWidth + 'px'
@@ -2414,14 +2432,7 @@ async function toggleDockMode(context, el){
       const bounds = computeWorkspaceBounds()
       const workspaceWidth = bounds.width || (WIN().innerWidth || 1280)
       const panelWidth = Math.max(MIN_WIDTH, Math.min(Number((cfg && cfg.win && cfg.win.w) || MIN_WIDTH), workspaceWidth || MIN_WIDTH))
-      try {
-        const bar = DOC().querySelector('.menubar')
-        const topH = ((bar && bar.clientHeight) || 0)
-        el.style.top = topH + 'px'
-        el.style.height = 'calc(100vh - ' + topH + 'px)'
-      } catch {
-        el.style.top = '0px'; el.style.height = '100vh'
-      }
+      applyDockVerticalBounds(el, bounds)
       el.style.right = bounds.right + 'px'
       el.style.left = 'auto'
       el.style.width = panelWidth + 'px'
@@ -2467,14 +2478,7 @@ async function setDockMode(context, el, dockMode){
       const bounds = computeWorkspaceBounds()
       const workspaceWidth = bounds.width || (WIN().innerWidth || 1280)
       const panelWidth = Math.max(MIN_WIDTH, Math.min(Number((cfg && cfg.win && cfg.win.w) || MIN_WIDTH), workspaceWidth || MIN_WIDTH))
-      try {
-        const bar = DOC().querySelector('.menubar')
-        const topH = ((bar && bar.clientHeight) || 0)
-        el.style.top = topH + 'px'
-        el.style.height = 'calc(100vh - ' + topH + 'px)'
-      } catch {
-        el.style.top = '0px'; el.style.height = '100vh'
-      }
+      applyDockVerticalBounds(el, bounds)
       el.style.left = bounds.left + 'px'
       el.style.right = 'auto'
       el.style.width = panelWidth + 'px'
@@ -2484,14 +2488,7 @@ async function setDockMode(context, el, dockMode){
       const bounds = computeWorkspaceBounds()
       const workspaceWidth = bounds.width || (WIN().innerWidth || 1280)
       const panelWidth = Math.max(MIN_WIDTH, Math.min(Number((cfg && cfg.win && cfg.win.w) || MIN_WIDTH), workspaceWidth || MIN_WIDTH))
-      try {
-        const bar = DOC().querySelector('.menubar')
-        const topH = ((bar && bar.clientHeight) || 0)
-        el.style.top = topH + 'px'
-        el.style.height = 'calc(100vh - ' + topH + 'px)'
-      } catch {
-        el.style.top = '0px'; el.style.height = '100vh'
-      }
+      applyDockVerticalBounds(el, bounds)
       el.style.right = bounds.right + 'px'
       el.style.left = 'auto'
       el.style.width = panelWidth + 'px'

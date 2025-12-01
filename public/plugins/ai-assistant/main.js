@@ -11,6 +11,7 @@ const SES_KEY = 'ai.session.default'
 
 const FREE_MODEL_OPTIONS = {
   qwen: { label: 'Qwen', id: 'Qwen/Qwen3-8B' },
+  qwen_omni: { label: 'Omin👁', id: 'Qwen/Qwen3-Omni-30B-A3B-Instruct', vision: true },
   glm: { label: 'GLM', id: 'THUDM/glm-4-9b-chat' }
 }
 const DEFAULT_FREE_MODEL_KEY = 'qwen'
@@ -26,7 +27,8 @@ const DEFAULT_CFG = {
   limits: { maxCtxChars: 6000 },
   theme: 'auto',
   freeModel: DEFAULT_FREE_MODEL_KEY,
-  alwaysUseFreeTrans: false // 翻译功能始终使用免费模型
+  alwaysUseFreeTrans: false, // 翻译功能始终使用免费模型
+  qwenOmniHintShown: false // 是否已提示过 Omin 视觉模型限制
 }
 
 // 会话只做最小持久化（可选），首版以内存为主
@@ -383,7 +385,11 @@ function extractTodos(todos){
 // 根据配置判断是否启用视觉能力（当前仅自定义模型允许）
 function isVisionEnabledForConfig(cfg){
   if (!cfg) return false
-  if (isFreeProvider(cfg)) return false
+  if (isFreeProvider(cfg)) {
+    const key = normalizeFreeModelKey(cfg.freeModel)
+    const info = FREE_MODEL_OPTIONS[key]
+    if (!info || !info.vision) return false
+  }
   return !!cfg.visionEnabled
 }
 
@@ -1390,7 +1396,13 @@ async function refreshHeader(context){
   try {
     const visionBtn = el('ai-vision-toggle')
     if (visionBtn) {
-      const supported = !isFreeProvider(cfg)
+      const isFree = isFreeProvider(cfg)
+      let supported = !isFree
+      if (isFree) {
+        const key = normalizeFreeModelKey(cfg.freeModel)
+        const info = FREE_MODEL_OPTIONS[key]
+        supported = !!(info && info.vision)
+      }
       const active = !!cfg.visionEnabled && supported
       visionBtn.disabled = !supported
       visionBtn.classList.toggle('disabled', !supported)
@@ -1727,7 +1739,7 @@ async function mountWindow(context){
     '    <span class="mode-label" id="mode-label-free-toolbar">免费</span>',
     '   </div>',
     '   <label id="ai-free-model-label" style="display:none;font-size:12px;color:#6b7280;white-space:nowrap;margin-left:6px;">模型</label>',
-    '   <select id="ai-free-model" title="选择免费模型" style="display:none;width:80px;border-radius:6px;padding:4px 6px;font-size:12px;"><option value="qwen">Qwen</option><option value="glm">GLM</option></select>',
+    '   <select id="ai-free-model" title="选择免费模型" style="display:none;width:80px;border-radius:6px;padding:4px 6px;font-size:12px;"><option value="qwen">Qwen</option><option value="qwen_omni">Omin👁</option><option value="glm">GLM</option></select>',
     '   <div id="ai-selects">',
     '    <label id="ai-model-label" style="font-size:12px;">模型</label>',
     '    <input id="ai-model" placeholder="如 gpt-4o-mini" style="width:120px;font-size:12px;padding:4px 6px;"/>',
@@ -1841,7 +1853,25 @@ async function mountWindow(context){
     const freeModelSelect = el.querySelector('#ai-free-model')
     freeModelSelect?.addEventListener('change', async () => {
       const cfg = await loadCfg(context)
-      cfg.freeModel = normalizeFreeModelKey(freeModelSelect.value)
+      const nextKey = normalizeFreeModelKey(freeModelSelect.value)
+      cfg.freeModel = nextKey
+      const info = FREE_MODEL_OPTIONS[nextKey]
+      if (info && info.vision) {
+        cfg.visionEnabled = true
+        // 首次切换到 Omin 视觉模型时，在对话框中发送一次提示文案
+        if (!cfg.qwenOmniHintShown && nextKey === 'qwen_omni') {
+          try {
+            await ensureSessionForDoc(context)
+            const tip = '当前使用的是 Omin 视觉模型：免费体验但每日有用量和速率限制，请按需使用。'
+            pushMsg('assistant', tip)
+            __AI_LAST_REPLY__ = tip
+            const chat = el('ai-chat')
+            if (chat) renderMsgs(chat)
+            try { await syncCurrentSessionToDB(context) } catch {}
+          } catch {}
+          cfg.qwenOmniHintShown = true
+        }
+      }
       await saveCfg(context, cfg)
       await refreshHeader(context)
     })

@@ -54,16 +54,35 @@ let __AI_LAYOUT_UNSUB__ = null // 布局变更回调注销函数
 
 function computeWorkspaceBounds() {
   try {
+    // 优先使用宿主提供的工作区边界（已考虑库侧栏和所有插件 Panel）
+    if (__AI_CONTEXT__ && __AI_CONTEXT__.layout && typeof __AI_CONTEXT__.layout.getWorkspaceBounds === 'function') {
+      const b = __AI_CONTEXT__.layout.getWorkspaceBounds()
+      if (b && typeof b === 'object') {
+        const left = Number(b.left) || 0
+        const right = Number(b.right) || 0
+        const width = Number(b.width) || Math.max(0, (WIN().innerWidth || 1280) - left - right)
+        const top = Number(b.top) || 0
+        const height = Number(b.height) || (WIN().innerHeight || 720)
+        return { left, right, width, top, height }
+      }
+    }
+
+    // 回退：仅基于容器 + 库侧栏估算
     const doc = DOC()
     const container = doc.querySelector('.container')
     const lib = doc.getElementById('library')
     const viewportWidth = WIN().innerWidth || 1280
+    const viewportHeight = WIN().innerHeight || 720
     let leftGap = 0
     let rightGap = 0
+    let top = 0
+    let height = viewportHeight
     if (container && container.getBoundingClientRect) {
       const contRect = container.getBoundingClientRect()
       leftGap = contRect.left
       rightGap = viewportWidth - contRect.right
+      top = contRect.top
+      height = contRect.height || viewportHeight
       if (lib && !lib.classList.contains('hidden') && lib.getBoundingClientRect) {
         const libRect = lib.getBoundingClientRect()
         if (container.classList.contains('with-library-left')) {
@@ -78,9 +97,11 @@ function computeWorkspaceBounds() {
     }
     if (!Number.isFinite(leftGap) || leftGap < 0) leftGap = 0
     if (!Number.isFinite(rightGap) || rightGap < 0) rightGap = 0
-    return { left: leftGap, right: rightGap, width: Math.max(0, viewportWidth - leftGap - rightGap) }
+    return { left: leftGap, right: rightGap, width: Math.max(0, viewportWidth - leftGap - rightGap), top, height }
   } catch {
-    return { left: 0, right: 0, width: WIN().innerWidth || 1280 }
+    const viewportWidth = WIN().innerWidth || 1280
+    const viewportHeight = WIN().innerHeight || 720
+    return { left: 0, right: 0, width: viewportWidth, top: 0, height: viewportHeight }
   }
 }
 
@@ -1238,17 +1259,8 @@ function bindFloatDragResize(context, el){
       else { dragging=true }
     })
     rz?.addEventListener('mousedown', (e)=>{
-      // 左右停靠时不允许角拖动；底部停靠时仅调整高度；浮窗时宽高都可调
-      if (el.classList.contains('dock-left') || el.classList.contains('dock-right')) return
-      if (el.classList.contains('dock-bottom')) {
-        resizing = true
-        sx = e.clientX
-        sy = e.clientY
-        sw = parseInt(el.style.width) || 520
-        sh = parseInt(el.style.height) || 440
-        e.preventDefault()
-        return
-      }
+      // 左右/底部停靠时不允许角拖动；仅在浮窗模式允许自由缩放
+      if (el.classList.contains('dock-left') || el.classList.contains('dock-right') || el.classList.contains('dock-bottom')) return
       resizing = true
       sx = e.clientX
       sy = e.clientY
@@ -1280,14 +1292,8 @@ function bindFloatDragResize(context, el){
       }
       if (dragging){ el.style.left = (mx + e.clientX - sx) + 'px'; el.style.top = (my + e.clientY - sy) + 'px' }
       if (resizing){
-        if (el.classList.contains('dock-bottom')) {
-          const newHeight = Math.max(300, sh + (sy - e.clientY))
-          el.style.height = newHeight + 'px'
-          setDockPush('bottom', newHeight)
-        } else {
-          el.style.width = Math.max(MIN_WIDTH, sw + e.clientX - sx) + 'px'
-          el.style.height = Math.max(300, sh + e.clientY - sy) + 'px'
-        }
+        el.style.width = Math.max(MIN_WIDTH, sw + e.clientX - sx) + 'px'
+        el.style.height = Math.max(300, sh + e.clientY - sy) + 'px'
       }
     })
     WIN().addEventListener('mouseup', async ()=>{

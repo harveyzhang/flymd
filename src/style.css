@@ -449,14 +449,17 @@ body {
 .container {
   --gap-left-library: 0px;
   --gap-right-library: 0px;
+  /* 大纲独立布局左右占位宽度（默认 0，仅在剥离模式下使用） */
+  --gap-left-outline: 0px;
+  --gap-right-outline: 0px;
   /* 插件侧边/底部 Panel 推挤间距（包含 AI 助手等） */
   --ai-left: 300px;   /* 向后兼容旧 AI 助手：左侧宽度 */
   --ai-right: 300px;  /* 向后兼容旧 AI 助手：右侧宽度 */
   --dock-left-gap: 0px;
   --dock-right-gap: 0px;
   --dock-bottom-gap: 0px;
-  --workspace-left-gap: calc(var(--gap-left-library) + var(--dock-left-gap));
-  --workspace-right-gap: calc(var(--gap-right-library) + var(--dock-right-gap));
+  --workspace-left-gap: calc(var(--gap-left-library) + var(--gap-left-outline) + var(--dock-left-gap));
+  --workspace-right-gap: calc(var(--gap-right-library) + var(--gap-right-outline) + var(--dock-right-gap));
   --workspace-bottom-gap: var(--dock-bottom-gap);
   flex: 1; /* 在flex布局中填充剩余空间 */
   min-height: 0; /* 允许flex子元素正确收缩和滚动 */
@@ -1081,12 +1084,32 @@ body.focus-mode .lib-float-toggle.show { display: flex; }
 .library .hidden { display: none !important; }
 .library { -webkit-app-region: no-drag; }
 .library .lib-tree { padding: 8px 6px 14px 6px; font-size: 13px; -webkit-app-region: no-drag; }
-.library .lib-outline {
+/* 大纲面板：支持嵌入库内与剥离布局 */
+.lib-outline {
   padding: 10px 8px 16px 8px;
   font-size: 13px;
 }
+/* 剥离布局下的大纲列：绝对定位在容器内边，与库/编辑区并排 */
+.lib-outline.outline-floating {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 260px;
+  z-index: 14;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--panel-bg);
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+}
+.lib-outline.outline-floating.side-left {
+  left: var(--gap-left-library, 0px);
+}
+.lib-outline.outline-floating.side-right {
+  right: var(--gap-right-library, 0px);
+}
 
-.library .lib-outline .ol-item {
+.lib-outline .ol-item {
   padding: 4px 8px;
   border-radius: 0;
   cursor: pointer;
@@ -1099,14 +1122,14 @@ body.focus-mode .lib-float-toggle.show { display: flex; }
   color: var(--muted);
 }
 
-.library .lib-outline .ol-item:hover {
+.lib-outline .ol-item:hover {
   background: transparent;
   color: var(--fg);
   transform: none;
   box-shadow: none;
 }
 
-.library .lib-outline .ol-item.active {
+.lib-outline .ol-item.active {
   background: transparent;
   border-left: none;
   color: var(--fg);
@@ -1116,12 +1139,12 @@ body.focus-mode .lib-float-toggle.show { display: flex; }
 }
 
 @media (prefers-color-scheme: dark) {
-  .library .lib-outline .ol-item:hover {
+  .lib-outline .ol-item:hover {
     background: transparent;
     color: var(--fg);
   }
 
-  .library .lib-outline .ol-item.active {
+  .lib-outline .ol-item.active {
     background: transparent;
     color: var(--fg);
     box-shadow: none;
@@ -1129,33 +1152,33 @@ body.focus-mode .lib-float-toggle.show { display: flex; }
 }
 
 /* 隐藏大纲标题序号 */
-.library .lib-outline .ol-tg {
+.lib-outline .ol-tg {
   display: none;
 }
 
-.library .lib-outline .ol-item:hover .ol-tg {
+.lib-outline .ol-item:hover .ol-tg {
   color: #2563eb;
   background: rgba(37,99,235,0.1);
 }
 
-.library .lib-outline .ol-item.active .ol-tg {
+.lib-outline .ol-item.active .ol-tg {
   color: #2563eb;
   background: rgba(37,99,235,0.15);
 }
 
 @media (prefers-color-scheme: dark) {
-  .library .lib-outline .ol-item:hover .ol-tg {
+  .lib-outline .ol-item:hover .ol-tg {
     color: #60a5fa;
     background: rgba(96,165,250,0.15);
   }
 
-  .library .lib-outline .ol-item.active .ol-tg {
+  .lib-outline .ol-item.active .ol-tg {
     color: #60a5fa;
     background: rgba(96,165,250,0.2);
   }
 }
 
-.library .lib-outline .lvl-1 {
+.lib-outline .lvl-1 {
   margin-left: 0;
   font-weight: 600;
   font-size: 14px;
@@ -1163,30 +1186,30 @@ body.focus-mode .lib-float-toggle.show { display: flex; }
   margin-bottom: 4px;
 }
 
-.library .lib-outline .lvl-2 {
+.lib-outline .lvl-2 {
   margin-left: 12px;
   font-size: 13px;
 }
 
-.library .lib-outline .lvl-3 {
+.lib-outline .lvl-3 {
   margin-left: 24px;
   font-size: 13px;
   opacity: 0.95;
 }
 
-.library .lib-outline .lvl-4 {
+.lib-outline .lvl-4 {
   margin-left: 36px;
   font-size: 12px;
   opacity: 0.9;
 }
 
-.library .lib-outline .lvl-5 {
+.lib-outline .lvl-5 {
   margin-left: 48px;
   font-size: 12px;
   opacity: 0.85;
 }
 
-.library .lib-outline .lvl-6 {
+.lib-outline .lvl-6 {
   margin-left: 60px;
   font-size: 11px;
   opacity: 0.8;
@@ -1231,6 +1254,9 @@ body.focus-mode .lib-float-toggle.show { display: flex; }
 /* 文档库/AI 助手占用空间通过 CSS 变量告知容器 */
 .container.with-library-left { --gap-left-library: 300px; }
 .container.with-library-right { --gap-right-library: 300px; }
+/* 大纲独立列占用空间（通过类名声明左右占位） */
+.container.with-outline-left { --gap-left-outline: 260px; }
+.container.with-outline-right { --gap-right-outline: 260px; }
 /* 兼容旧版 AI 助手：仍可通过类名写入 dock 间距 */
 .container.with-ai-left { --dock-left-gap: var(--ai-left, 300px); }
 .container.with-ai-right { --dock-right-gap: var(--ai-right, 300px); }

@@ -360,10 +360,13 @@ function stopDotBlink() {
 let selectedFolderPath: string | null = null
 let selectedNodeEl: HTMLElement | null = null
 // 库面板停靠状态：true=固定在左侧并收缩编辑区；false=覆盖式抽屉
-let libraryDocked = true
-type LibrarySide = 'left' | 'right'
-let librarySide: LibrarySide = 'left'
-let libraryVisible = true
+  let libraryDocked = true
+  type LibrarySide = 'left' | 'right'
+  let librarySide: LibrarySide = 'left'
+  let libraryVisible = true
+  // 大纲布局模式：embedded=嵌入库侧栏；left=库 | 大纲 | 编辑区；right=库 | 编辑区 | 大纲
+  type OutlineLayout = 'embedded' | 'left' | 'right'
+  let outlineLayout: OutlineLayout = 'embedded'
 // 非固定模式下：离开侧栏后自动隐藏的延迟定时器
 let _libLeaveTimer: number | null = null
 // 专注模式：隐藏顶栏，鼠标移到顶部边缘时显示
@@ -400,8 +403,8 @@ let dirty = false; // 是否有未保存更改（此处需加分号，避免下�
 // 最近一次粘贴组合键：normal=Ctrl+V, plain=Ctrl+Shift+V；用于在 paste 事件中区分行为
 let _lastPasteCombo: 'normal' | 'plain' | null = null
 
-// 配置存储（使用 tauri store）
-let store: Store | null = null
+  // 配置存储（使用 tauri store）
+  let store: Store | null = null
 let uploaderEnabledSnapshot = false
 // 插件管理（简单实现）
 type PluginManifest = {
@@ -3173,7 +3176,7 @@ wysiwygCaretEl.id = 'wysiwyg-caret'
   containerEl.appendChild(panel)
 
   // �ĵ��ⲿ(�ⲿ)
-  const library = document.createElement('div')
+    const library = document.createElement('div')
   library.id = 'library'
   library.className = 'library hidden side-left'
   library.innerHTML = `
@@ -3183,15 +3186,15 @@ wysiwygCaretEl.id = 'wysiwyg-caret'
         <div class="lib-name" id="lib-path"></div>
         <button class="lib-toggle-btn" id="lib-toggle">&lt;</button>
       </div>
-      <div class="lib-actions">
-        <button class="lib-action-btn active" id="lib-tab-files">${t('tab.files')}</button>
-        <button class="lib-action-btn" id="lib-tab-outline">${t('tab.outline')}</button>
-        <button class="lib-action-btn" id="lib-refresh">${t('lib.refresh')}</button>
-        <button class="lib-action-btn" id="lib-side">${t('lib.side.left')}</button>
-        <button class="lib-action-btn" id="lib-pin">${t('lib.pin.auto')}</button>
+        <div class="lib-actions">
+          <button class="lib-action-btn active" id="lib-tab-files">${t('tab.files')}</button>
+          <button class="lib-action-btn" id="lib-tab-outline">${t('tab.outline')}</button>
+          <button class="lib-action-btn" id="lib-refresh">${t('lib.refresh')}</button>
+          <button class="lib-action-btn" id="lib-side">${t('lib.side.left')}</button>
+          <button class="lib-action-btn" id="lib-pin">${t('lib.pin.auto')}</button>
+        </div>
       </div>
-    </div>
-    <div class="lib-tree" id="lib-tree"></div>
+      <div class="lib-tree" id="lib-tree"></div>
     <div class="lib-outline hidden" id="lib-outline"></div>
   `
   containerEl.appendChild(library)
@@ -3218,44 +3221,55 @@ wysiwygCaretEl.id = 'wysiwyg-caret'
     // 初次渲染尝试同步库路径显示（若已存在旧配置）
     try { void refreshLibraryUiAndTree(false) } catch {}
     // 绑定标签页切换：目录 / 大纲
-    const tabFiles = library.querySelector('#lib-tab-files') as HTMLButtonElement | null
-    const tabOutline = library.querySelector('#lib-tab-outline') as HTMLButtonElement | null
-    const treeEl = library.querySelector('#lib-tree') as HTMLDivElement | null
-    const outlineEl = library.querySelector('#lib-outline') as HTMLDivElement | null
-    function activateLibTab(kind: 'files' | 'outline') {
-      try {
-        tabFiles?.classList.toggle('active', kind === 'files')
-        tabOutline?.classList.toggle('active', kind === 'outline')
-        if (treeEl) treeEl.classList.toggle('hidden', kind !== 'files')
-        if (outlineEl) outlineEl.classList.toggle('hidden', kind !== 'outline')
-        if (kind === 'outline') { try { renderOutlinePanel() } catch {} }
-      } catch {}
-    }
-    tabFiles?.addEventListener('click', () => activateLibTab('files'))
-    tabOutline?.addEventListener('click', () => activateLibTab('outline'))
+      const tabFiles = library.querySelector('#lib-tab-files') as HTMLButtonElement | null
+      const tabOutline = library.querySelector('#lib-tab-outline') as HTMLButtonElement | null
+      const treeEl = library.querySelector('#lib-tree') as HTMLDivElement | null
+      const outlineEl = document.getElementById('lib-outline') as HTMLDivElement | null
+      function activateLibTab(kind: 'files' | 'outline') {
+        try {
+          tabFiles?.classList.toggle('active', kind === 'files')
+          tabOutline?.classList.toggle('active', kind === 'outline')
+          if (treeEl) {
+            const hideTree = (outlineLayout === 'embedded') && (kind !== 'files')
+            treeEl.classList.toggle('hidden', hideTree)
+          }
+          if (outlineEl) {
+            const hideOutline = (outlineLayout === 'embedded') && (kind !== 'outline')
+            outlineEl.classList.toggle('hidden', hideOutline)
+          }
+          if (kind === 'outline') { try { renderOutlinePanel() } catch {} }
+        } catch {}
+      }
+      tabFiles?.addEventListener('click', () => activateLibTab('files'))
+      tabOutline?.addEventListener('click', () => activateLibTab('outline'))
+      // 大纲标签右键菜单：选择“嵌入 / 剥离 / 右侧”三种布局
+      tabOutline?.addEventListener('contextmenu', (ev) => {
+        try { ev.preventDefault() } catch {}
+        try { showOutlineLayoutMenu(ev.clientX, ev.clientY) } catch {}
+      })
     // 绑定固定/自动切换按钮
-    const elPin = library.querySelector('#lib-pin') as HTMLButtonElement | null
+      const elPin = library.querySelector('#lib-pin') as HTMLButtonElement | null
     if (elPin) {
       ;(async () => { try { libraryDocked = await getLibraryDocked(); elPin.textContent = libraryDocked ? t('lib.pin.auto') : t('lib.pin.fixed'); applyLibraryLayout() } catch {} })()
       elPin.addEventListener('click', () => { void setLibraryDocked(!libraryDocked) })
     }
-    const elSide = library.querySelector('#lib-side') as HTMLButtonElement | null
+      const elSide = library.querySelector('#lib-side') as HTMLButtonElement | null
     if (elSide) {
       updateLibrarySideButton()
       elSide.addEventListener('click', () => {
         void setLibrarySide(librarySide === 'left' ? 'right' : 'left')
       })
     }
-    // 绑定侧栏收起/展开按钮
-    const elToggle = library.querySelector('#lib-toggle') as HTMLButtonElement | null
-    if (elToggle) {
-      elToggle.addEventListener('click', () => {
-        try {
-          showLibrary(false)
-        } catch {}
-      })
-    }
-  } catch {}
+        // 绑定侧栏收起/展开按钮
+        const elToggle = library.querySelector('#lib-toggle') as HTMLButtonElement | null
+        if (elToggle) {
+          elToggle.addEventListener('click', () => {
+            try {
+              showLibrary(false)
+            } catch {}
+          })
+        }
+    } catch {}
   // 创建浮动展开按钮（侧栏隐藏时显示，仅在专注模式）
   try {
     const floatToggle = document.createElement('button')
@@ -6308,7 +6322,7 @@ function syncLibraryFloatToggle() {
   } catch {}
 }
 
-function syncCustomTitlebarPlacement() {
+  function syncCustomTitlebarPlacement() {
   try {
     const titleBar = document.getElementById('custom-titlebar') as HTMLDivElement | null
     if (!titleBar) return
@@ -6317,8 +6331,46 @@ function syncCustomTitlebarPlacement() {
   } catch {}
 }
 
-// 库面板显示/隐藏：使用覆盖式抽屉，不再改动容器布局（避免编辑区被右移抖动）
-function applyLibraryLayout() {
+  // 根据当前大纲布局模式应用布局（大纲剥离/嵌入）
+  function applyOutlineLayout() {
+    try {
+      const container = document.querySelector('.container') as HTMLDivElement | null
+      const libraryEl = document.getElementById('library') as HTMLDivElement | null
+      const outlineEl = document.getElementById('lib-outline') as HTMLDivElement | null
+      if (!container || !outlineEl) return
+      // 默认：嵌入库侧栏（与现有行为一致）
+      if (outlineLayout === 'embedded') {
+        if (libraryEl && outlineEl.parentElement !== libraryEl) {
+          libraryEl.appendChild(outlineEl)
+        }
+        outlineEl.classList.remove('outline-floating', 'side-left', 'side-right')
+        container.classList.remove('with-outline-left', 'with-outline-right')
+        // 清理大纲额外占位，恢复仅由库/插件控制
+        container.style.removeProperty('--gap-left-outline')
+        container.style.removeProperty('--gap-right-outline')
+        notifyWorkspaceLayoutChanged()
+        return
+      }
+      // 剥离：挂到容器下，作为独立列
+      if (outlineEl.parentElement !== container) {
+        container.appendChild(outlineEl)
+      }
+      outlineEl.classList.add('outline-floating')
+      const isLeft = outlineLayout === 'left'
+      outlineEl.classList.toggle('side-left', isLeft)
+      outlineEl.classList.toggle('side-right', !isLeft)
+      container.classList.toggle('with-outline-left', isLeft)
+      container.classList.toggle('with-outline-right', !isLeft)
+      // 固定大纲列宽度，使用 CSS 变量告知编辑区/预览
+      const widthPx = 260
+      container.style.setProperty('--gap-left-outline', isLeft ? `${widthPx}px` : '0px')
+      container.style.setProperty('--gap-right-outline', !isLeft ? `${widthPx}px` : '0px')
+      notifyWorkspaceLayoutChanged()
+    } catch {}
+  }
+
+  // 库面板显示/隐藏：使用覆盖式抽屉，不再改动容器布局（避免编辑区被右移抖动）
+  function applyLibraryLayout() {
   let visible = false
   try {
     const lib = document.getElementById('library') as HTMLDivElement | null
@@ -6330,29 +6382,31 @@ function applyLibraryLayout() {
       if (toggleBtn) toggleBtn.textContent = librarySide === 'right' ? '>' : '<'
       visible = !lib.classList.contains('hidden')
     }
-    if (container) {
-      container.classList.remove('with-library-left', 'with-library-right')
-      if (visible && libraryDocked) {
-        container.classList.add('with-library')
-        container.classList.add(librarySide === 'right' ? 'with-library-right' : 'with-library-left')
-      } else {
-        container.classList.remove('with-library')
+      if (container) {
+        container.classList.remove('with-library-left', 'with-library-right')
+        if (visible && libraryDocked) {
+          container.classList.add('with-library')
+          container.classList.add(librarySide === 'right' ? 'with-library-right' : 'with-library-left')
+        } else {
+          container.classList.remove('with-library')
+        }
       }
-    }
-  } catch {}
-  notifyWorkspaceLayoutChanged()
+    } catch {}
+    // 库布局变化后，同步更新大纲布局（用于处理“库固定/位置改变时大纲列位置更新”）
+    try { applyOutlineLayout() } catch {}
+    notifyWorkspaceLayoutChanged()
   syncLibraryEdgeState(visible)
   syncLibraryFloatToggle()
   syncCustomTitlebarPlacement()
 }
 
-// 库面板显示/隐藏：使用覆盖式抽屉为默认；若开启“固定”，则并排显示
-function showLibrary(show: boolean, persist = true) {
+  // 库面板显示/隐藏：使用覆盖式抽屉为默认；若开启“固定”，则并排显示
+  function showLibrary(show: boolean, persist = true) {
   libraryVisible = !!show
   const lib = document.getElementById('library') as HTMLDivElement | null
   if (!lib) return
   lib.classList.toggle('hidden', !show)
-  applyLibraryLayout()
+    applyLibraryLayout()
   if (show && !fileTreeReady) {
     void (async () => {
       try { await refreshLibraryUiAndTree(true) } catch {}
@@ -6381,23 +6435,23 @@ function showLibrary(show: boolean, persist = true) {
       }
     } catch {}
   }
-  // 更新边缘热区可见性
-  try {
-    const libVisible = !lib.classList.contains('hidden')
-    syncLibraryEdgeState(libVisible)
-  } catch {}
+    // 更新边缘热区可见性
+    try {
+      const libVisible = !lib.classList.contains('hidden')
+      syncLibraryEdgeState(libVisible)
+    } catch {}
   if (persist) { void persistLibraryVisible() }
 }
 
-async function setLibraryDocked(docked: boolean, persist = true) {
+  async function setLibraryDocked(docked: boolean, persist = true) {
   libraryDocked = !!docked
-  try { if (persist && store) { await store.set('libraryDocked', libraryDocked); await store.save() } } catch {}
+    try { if (persist && store) { await store.set('libraryDocked', libraryDocked); await store.save() } } catch {}
   // 更新按钮文案
   try {
     const btn = document.getElementById('lib-pin') as HTMLButtonElement | null
     if (btn) btn.textContent = libraryDocked ? t('lib.pin.auto') : t('lib.pin.fixed')
   } catch {}
-  applyLibraryLayout()
+    applyLibraryLayout()
   // 若当前已显示且切到“非固定”，补绑定悬停自动隐藏
   try {
     const lib = document.getElementById('library') as HTMLDivElement | null
@@ -6413,21 +6467,119 @@ async function persistLibraryVisible() {
   try { if (!store) return; await store.set('libraryVisible', libraryVisible); await store.save() } catch {}
 }
 
-async function getLibraryVisible(): Promise<boolean> {
+  async function getLibraryVisible(): Promise<boolean> {
   try {
     if (!store) return libraryVisible
     const v = await store.get('libraryVisible')
     if (typeof v === 'boolean') return v
   } catch {}
-  return true
-}
+    return true
+  }
 
-async function setLibrarySide(side: LibrarySide, persist = true) {
+  const OUTLINE_LAYOUT_KEY = 'outlineLayout'
+
+  // 大纲布局：右键菜单 UI（挂在“大纲”标签上）
+  function showOutlineLayoutMenu(x: number, y: number) {
+    try {
+      const existing = document.getElementById('outline-layout-menu') as HTMLDivElement | null
+      if (existing && existing.parentElement) existing.parentElement.removeChild(existing)
+      const menu = document.createElement('div')
+      menu.id = 'outline-layout-menu'
+      menu.style.position = 'fixed'
+      menu.style.zIndex = '99999'
+      menu.style.left = `${x}px`
+      menu.style.top = `${y}px`
+      menu.style.background = 'var(--bg)'
+      menu.style.border = '1px solid var(--border)'
+      menu.style.borderRadius = '8px'
+      menu.style.padding = '4px 0'
+      menu.style.boxShadow = '0 8px 24px rgba(15,23,42,0.2)'
+      menu.style.minWidth = '140px'
+      menu.style.fontSize = '12px'
+      const makeItem = (label: string, mode: OutlineLayout) => {
+        const item = document.createElement('div')
+        item.textContent = label
+        item.style.padding = '6px 12px'
+        item.style.cursor = 'pointer'
+        item.style.whiteSpace = 'nowrap'
+        item.style.color = 'var(--fg)'
+        if (outlineLayout === mode) {
+          item.style.fontWeight = '600'
+        }
+        item.addEventListener('mouseenter', () => { item.style.background = 'rgba(148,163,184,0.16)' })
+        item.addEventListener('mouseleave', () => { item.style.background = 'transparent' })
+        item.addEventListener('click', () => {
+          try { void setOutlineLayout(mode) } catch {}
+          try {
+            if (menu.parentElement) menu.parentElement.removeChild(menu)
+          } catch {}
+        })
+        return item
+      }
+      menu.appendChild(makeItem('嵌入侧栏', 'embedded'))
+      menu.appendChild(makeItem('剥离（库 | 大纲 | 编辑区）', 'left'))
+      menu.appendChild(makeItem('右侧（库 | 编辑区 | 大纲）', 'right'))
+      const close = () => {
+        try {
+          document.removeEventListener('click', onDocClick, true)
+          document.removeEventListener('contextmenu', onDocCtx, true)
+          if (menu.parentElement) menu.parentElement.removeChild(menu)
+        } catch {}
+      }
+      const onDocClick = (ev: MouseEvent) => {
+        try {
+          if (menu.contains(ev.target as Node)) return
+        } catch {}
+        close()
+      }
+      const onDocCtx = (ev: MouseEvent) => {
+        try {
+          if (menu.contains(ev.target as Node)) return
+        } catch {}
+        close()
+      }
+      document.addEventListener('click', onDocClick, true)
+      document.addEventListener('contextmenu', onDocCtx, true)
+      document.body.appendChild(menu)
+    } catch {}
+  }
+
+  async function setOutlineLayout(mode: OutlineLayout, persist = true): Promise<void> {
+    outlineLayout = mode
+    try {
+      if (persist && store) {
+        await store.set(OUTLINE_LAYOUT_KEY, outlineLayout)
+        await store.save()
+      }
+    } catch {}
+    applyOutlineLayout()
+    // 剥离模式下，确保目录和大纲同时可见
+    try {
+      const library = document.getElementById('library') as HTMLDivElement | null
+      const treeEl = library?.querySelector('#lib-tree') as HTMLDivElement | null
+      const outlineEl = document.getElementById('lib-outline') as HTMLDivElement | null
+      if (outlineLayout !== 'embedded') {
+        if (treeEl) treeEl.classList.remove('hidden')
+        if (outlineEl) outlineEl.classList.remove('hidden')
+      }
+    } catch {}
+  }
+
+  async function getOutlineLayout(): Promise<OutlineLayout> {
+    try {
+      if (!store) return outlineLayout
+      const v = await store.get(OUTLINE_LAYOUT_KEY)
+      if (v === 'embedded' || v === 'left' || v === 'right') return v
+    } catch {}
+    return outlineLayout
+  }
+
+  async function setLibrarySide(side: LibrarySide, persist = true) {
   librarySide = side === 'right' ? 'right' : 'left'
-  try { if (persist && store) { await store.set('librarySide', librarySide); await store.save() } } catch {}
-  updateLibrarySideButton()
-  applyLibraryLayout()
-}
+    try { if (persist && store) { await store.set('librarySide', librarySide); await store.save() } } catch {}
+    updateLibrarySideButton()
+    applyLibraryLayout()
+  }
 
 async function getLibrarySide(): Promise<LibrarySide> {
   try {
@@ -10460,6 +10612,11 @@ function bindEvents() {
 
     // 尝试初始化存储（确保完成后再加载扩展，避免读取不到已安装列表）
     await initStore()
+    try {
+      const layout = await getOutlineLayout()
+      outlineLayout = layout
+      applyOutlineLayout()
+    } catch {}
     await maybeAutoImportPortableBackup()
     try {
       const side = await getLibrarySide()

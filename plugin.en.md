@@ -190,6 +190,73 @@ const response = await context.http.fetch('https://api.example.com/post', {
 });
 ```
 
+### context.getFrontMatterRaw / context.getDocMeta / context.getDocBody
+
+Read YAML Front Matter at the beginning of the current document and its parsed metadata, useful for blog publishing, library enhancements, and external app sync.
+
+> Detection rules:
+> - Front Matter is recognized only when the top of the document matches:
+>   - First line is `---`
+>   - There is at least one line that looks like `key: value` in between
+>   - A separate `---` line terminates the block
+> - Otherwise these helpers treat the document as plain Markdown and never modify file content
+
+```javascript
+// 1. Raw Front Matter text (including --- delimiters), or null when missing
+const raw = context.getFrontMatterRaw();
+// Example:
+// ---
+// title: "This is the title"
+// keywords: [markdown, hexo]
+// ---\n
+
+// 2. Parsed metadata object (using js-yaml); null if missing or parse failed
+const meta = context.getDocMeta();
+// Typical structure:
+// {
+//   title: "This is the title",
+//   keywords: ["markdown", "hexo"],
+//   author: ["Author One", "Author Two"],
+//   abstract: "This is the abstract."
+// }
+
+// 3. Body part (Markdown without Front Matter)
+const body = context.getDocBody();
+// - With Front Matter: body starts at the first real content line
+// - Without Front Matter: equals context.getEditorValue()
+```
+
+**Example: publish using Front Matter title and tags**
+
+```javascript
+export function activate(context) {
+  context.addMenuItem({
+    label: 'Publish to blog',
+    async onClick() {
+      const meta = context.getDocMeta() || {};
+      const body = context.getDocBody();
+
+      const title = meta.title || guessTitleFromBody(body);
+      const tags = meta.tags || meta.keywords || [];
+
+      await publishToBlog({
+        title,
+        tags,
+        content: body,
+        excerpt: meta.abstract || ''
+      });
+
+      context.ui.notice('Published: ' + title, 'ok');
+    }
+  });
+}
+
+function guessTitleFromBody(body) {
+  const m = body.match(/^#\s+(.+)$/m);
+  return (m && m[1]) || 'Untitled';
+}
+```
+
 ### context.invoke
 
 Call Tauri backend commands.

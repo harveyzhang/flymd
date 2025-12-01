@@ -441,6 +441,7 @@ type PluginContextMenuItem = {
 }
 // 配置备份（已拆分到 core/configBackup.ts）
 import { CONFIG_BACKUP_VERSION, PLUGINS_DIR, SETTINGS_FILE_NAME, BACKUP_PREFIX_APPDATA, BACKUP_PREFIX_APPLOCAL, APP_LOCAL_EXCLUDE_ROOTS, normalizeBackupPath, bytesToBase64, base64ToBytes, getSettingsBaseDir, collectConfigBackupFiles, resolveBackupPath, ensureParentDirsForBackup, clearDirectory, clearAppLocalDataForRestore, type ConfigBackupEntry, type ConfigBackupPayload, type BackupPathInfo } from './core/configBackup'
+import { load as yamlLoad } from 'js-yaml'
 // 便携模式（已拆分到 core/portable.ts）
 import { PORTABLE_BACKUP_FILENAME, getPortableBaseDir, getPortableDirAbsolute, joinPortableFile, exportPortableBackupSilent, readPortableBackupPayload } from './core/portable'
 
@@ -11506,6 +11507,42 @@ async function activatePlugin(p: InstalledPlugin): Promise<void> {
   const getSourceTextForPlugin = () => {
     try { return String(editor.value || '') } catch { return '' }
   }
+  // 供插件使用的 Front Matter/正文获取工具：始终基于当前源码文本即时计算，避免额外状态耦合
+  const getFrontMatterForPlugin = () => {
+    try {
+      const src = getSourceTextForPlugin()
+      const r = splitYamlFrontMatter(src)
+      return r.frontMatter
+    } catch {
+      return null
+    }
+  }
+  const getDocBodyForPlugin = () => {
+    try {
+      const src = getSourceTextForPlugin()
+      const r = splitYamlFrontMatter(src)
+      return r.body
+    } catch {
+      return getSourceTextForPlugin()
+    }
+  }
+  const getDocMetaForPlugin = (): any | null => {
+    try {
+      const fm = getFrontMatterForPlugin()
+      if (!fm) return null
+      // 提取 YAML 内容：去掉首尾分隔线，仅保留中间部分
+      let s = String(fm)
+      // 去掉 BOM 与起始 ---
+      s = s.replace(/^\uFEFF?---\s*\r?\n?/, '')
+      // 去掉结尾 ---（行首行尾的空白一并去除）
+      s = s.replace(/\r?\n---\s*$/, '')
+      const doc = yamlLoad(s)
+      if (!doc || typeof doc !== 'object') return null
+      return doc
+    } catch {
+      return null
+    }
+  }
   const getSourceSelectionForPlugin = () => {
     try {
       const s = editor.selectionStart >>> 0
@@ -11692,6 +11729,10 @@ async function activatePlugin(p: InstalledPlugin): Promise<void> {
     getSelection: () => getSourceSelectionForPlugin(),
     getSelectedMarkdown: () => getSourceSelectionForPlugin().text,
     getSourceText: () => getSourceTextForPlugin(),
+    // Front Matter / 元数据相关 API：若文首未使用标准头部写法，则返回 null 或原始全文
+    getFrontMatterRaw: () => getFrontMatterForPlugin(),
+    getDocBody: () => getDocBodyForPlugin(),
+    getDocMeta: () => getDocMetaForPlugin(),
     getLineText: (lineNumber: number) => getLineTextForPlugin(lineNumber),
     replaceRange: (start: number, end: number, text: string) => { try { const v = String(editor.value || ''); const a = Math.max(0, Math.min(start >>> 0, end >>> 0)); const b = Math.max(start >>> 0, end >>> 0); editor.value = v.slice(0, a) + String(text || '') + v.slice(b); const caret = a + String(text || '').length; editor.selectionStart = editor.selectionEnd = caret; dirty = true; refreshTitle(); refreshStatus(); if (mode === 'preview') { void renderPreview() } else if (wysiwyg) { scheduleWysiwygRender() } } catch {} },
     insertAtCursor: (text: string) => { try { const s = editor.selectionStart >>> 0; const e = editor.selectionEnd >>> 0; const a = Math.min(s, e); const b = Math.max(s, e); const v = String(editor.value || ''); editor.value = v.slice(0, a) + String(text || '') + v.slice(b); const caret = a + String(text || '').length; editor.selectionStart = editor.selectionEnd = caret; dirty = true; refreshTitle(); refreshStatus(); if (mode === 'preview') { void renderPreview() } else if (wysiwyg) { scheduleWysiwygRender() } } catch {} },

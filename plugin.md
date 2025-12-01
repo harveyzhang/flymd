@@ -190,6 +190,73 @@ const response = await context.http.fetch('https://api.example.com/post', {
 });
 ```
 
+### context.getFrontMatterRaw / context.getDocMeta / context.getDocBody
+
+读取当前文档头部的 YAML Front Matter 以及解析后的元数据，适合博客发布、文库增强、外部应用同步等场景统一使用。
+
+> 识别规则：
+> - 仅当文首满足以下形式时才认为存在 Front Matter：  
+>   - 第一行是 `---`  
+>   - 中间至少一行看起来像 `key: value`  
+>   - 再遇到一行单独的 `---` 结束  
+> - 不满足时，这三个方法会把文档当作普通 Markdown 处理，不会修改文件内容
+
+```javascript
+// 1. 原始 Front Matter 文本（包含 --- 分隔线），不存在时为 null
+const raw = context.getFrontMatterRaw();
+// 例如：
+// ---
+// title: "This is the title"
+// keywords: [markdown, hexo]
+// ---\n
+
+// 2. 解析后的元数据对象（使用 js-yaml 解析），失败或不存在时返回 null
+const meta = context.getDocMeta();
+// 典型结构：
+// {
+//   title: "This is the title",
+//   keywords: ["markdown", "hexo"],
+//   author: ["Author One", "Author Two"],
+//   abstract: "This is the abstract."
+// }
+
+// 3. 正文部分（剥离 Front Matter 后的 Markdown）
+const body = context.getDocBody();
+// - 若存在 Front Matter：body 从第一行真实正文开始
+// - 若不存在 Front Matter：等同于 context.getEditorValue()
+```
+
+**示例：从 Front Matter 读取标题和标签发布到博客**
+
+```javascript
+export function activate(context) {
+  context.addMenuItem({
+    label: '发布到博客',
+    async onClick() {
+      const meta = context.getDocMeta() || {};
+      const body = context.getDocBody();
+
+      const title = meta.title || guessTitleFromBody(body);
+      const tags = meta.tags || meta.keywords || [];
+
+      await publishToBlog({
+        title,
+        tags,
+        content: body,
+        excerpt: meta.abstract || ''
+      });
+
+      context.ui.notice('发布完成: ' + title, 'ok');
+    }
+  });
+}
+
+function guessTitleFromBody(body) {
+  const m = body.match(/^#\s+(.+)$/m);
+  return (m && m[1]) || '未命名文章';
+}
+```
+
 ### context.invoke
 
 调用 Tauri 后端命令。

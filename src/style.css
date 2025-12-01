@@ -658,11 +658,13 @@ body {
 .container:not(.wysiwyg-v2) #md-wysiwyg-root {
   left: var(--workspace-left-gap, 0px);
   right: var(--workspace-right-gap, 0px);
+  bottom: var(--workspace-bottom-gap, 0px);
   width: auto;
 }
 .container.wysiwyg-v2 #md-wysiwyg-root {
   left: var(--workspace-left-gap, 0px);
   right: var(--workspace-right-gap, 0px);
+  bottom: var(--workspace-bottom-gap, 0px);
   width: auto;
 }
 .container.wysiwyg-v2 #md-wysiwyg-root { display: block; }

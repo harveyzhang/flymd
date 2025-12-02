@@ -243,7 +243,7 @@ FlyMD 支持通过扩展插件增强功能：
 | 扩展 | 功能 |
 |------|------|
 | AI 写作助手 | 智能写作、内容润色、语法检查 |
-| Typecho Publisher | 一键发布到 Typecho 博客 |
+| Typecho Publisher | 一键发布到 Typecho 博客[Typecho支持完整的本地管理/快照/回滚] |
 | 待办事项推送 | 推送到微信、短信、邮箱等 |
 | 批量导出 PDF | 批量将 Markdown 导出为 PDF |
 | 字数统计 | 实时显示字符数、单词数、阅读时间 |
